@@ -1,18 +1,6 @@
 -- Ubicación en Studio: ServerScriptService > Services > Loading > AssetManifestService (ModuleScript)
---
--- Publica los asset IDs de TODO ServerStorage para que la pantalla de carga los
--- precargue AL ENTRAR, y no en pleno juego.
---
--- El problema que resuelve: ServerStorage no se replica, así que el cliente no puede
--- ver ni precargar lo que vive ahí (mapas, modelos). El servidor SÍ lo ve, arma la
--- lista acá y la deja en ReplicatedStorage.ServerAssetManifest (StringValue).
---
--- Se barre ServerStorage ENTERO a propósito: lo que sumes ahí queda cubierto sin
--- tocar este archivo ni la pantalla de carga. Viaja como UN StringValue con los IDs
--- separados por saltos de línea: una Instance por ID serían cientos de objetos
--- replicados para nada.
---
--- OJO: esto NO cubre el TERRENO. `PreloadAsync` no puede bajar terreno.
+-- ServerStorage no replica: el servidor publica sus asset IDs para que la carga los precargue.
+-- No cubre el terreno: PreloadAsync no puede bajarlo.
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -25,8 +13,7 @@ local AssetManifestService = {}
 local MANIFEST_NAME = "ServerAssetManifest"
 local SEPARATOR = "\n"
 
--- Código vendorizado, sin un solo asset adentro: recorrerlo es tiempo de arranque
--- tirado a la basura.
+-- Código sin assets: recorrerlo es tiempo de arranque perdido.
 local SKIP_CHILDREN = { EasyProfileStore = true }
 
 function AssetManifestService.Init()
@@ -48,9 +35,8 @@ function AssetManifestService.Init()
 		end)
 	end
 
-	-- Se llena ANTES de parentarlo: el cliente nunca puede leerlo a medio armar. Se
-	-- crea SIEMPRE, aunque quede vacío, así el cliente distingue "todavía no llegó" de
-	-- "no hay nada que precargar".
+	-- Un solo StringValue (no una Instance por ID), lleno antes de parentarlo y creado
+	-- aunque quede vacío: el cliente distingue "no llegó" de "no hay nada".
 	local manifest = Instance.new("StringValue")
 	manifest.Name = MANIFEST_NAME
 	manifest.Value = table.concat(ids, SEPARATOR)

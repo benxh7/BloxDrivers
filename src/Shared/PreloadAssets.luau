@@ -1,21 +1,17 @@
+-- Ubicación en Studio: ReplicatedStorage > PreloadAssets (ModuleScript)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Un barrido de Instances nunca puede ver un `rbxassetid://` escrito DENTRO de un
--- ModuleScript, y esas cosas se crean en runtime: sin esto se ven cargar en vivo.
--- Se caminan las tablas enteras, así sumar una skin o un ícono no toca este archivo.
+-- Un barrido de Instances no ve los `rbxassetid://` escritos dentro de un ModuleScript
+-- (se crean en runtime): por eso se recorren las tablas de los catálogos.
 local PreloadAssets = {}
 
--- Todo en pcall: esto alimenta la PANTALLA DE CARGA, así que un catálogo renombrado
--- tiene que costar un asset sin precargar, nunca romper el arranque.
--- Traído de UBG recortado a los catálogos que existen en BloxDrivers — sumá acá
--- cada config/catálogo nuevo que tenga assets (imágenes, sonidos, animaciones).
+-- Catálogos con assets a precargar: sumar acá cada config nuevo con imágenes o sonidos.
 local SOURCES: { { any } } = {
-	{ ReplicatedStorage, "TopbarConfig" }, -- íconos del topbar (se crean en runtime)
-	{ ReplicatedStorage, "WaveTransitionConfig" }, -- sonido de la ola de cierre del menú
-	-- El click de UI NO va acá: UIEffects (StarterPlayerScripts) lo precarga solo.
+	{ ReplicatedStorage, "TopbarConfig" },
+	{ ReplicatedStorage, "WaveTransitionConfig" },
+	-- Los sonidos de UI no: UIEffects los precarga solo.
 }
 
--- Los catálogos son tablas de tablas: el tope corta cualquier estructura rara.
 local MAX_DEPTH = 6
 
 local ASSET_PROPERTIES: { [string]: { string } } = {
@@ -33,7 +29,7 @@ local ASSET_PROPERTIES: { [string]: { string } } = {
 	Trail = { "Texture" },
 }
 
--- No deduplica: eso lo hace quien llama, que ya tiene su propio set.
+-- No deduplica: lo hace quien llama.
 function PreloadAssets.forEachAssetId(root: Instance, callback: (string) -> ())
 	local function scan(instance: Instance)
 		local properties = ASSET_PROPERTIES[instance.ClassName]
@@ -93,9 +89,10 @@ function PreloadAssets.collect(): { string }
 	for _, path in SOURCES do
 		local moduleScript = resolve(path)
 		if moduleScript and moduleScript:IsA("ModuleScript") then
+			-- pcall: un catálogo roto cuesta un asset sin precargar, no el arranque.
 			local ok, catalog = pcall(require, moduleScript)
 			if ok then
-				walk(catalog, found, seenTables, 0)
+			walk(catalog, found, seenTables, 0)
 			end
 		end
 	end
@@ -107,8 +104,7 @@ function PreloadAssets.collect(): { string }
 	return ids
 end
 
--- Van aparte porque `PreloadAsync` reporta OK sobre una animación sin bajar nada:
--- las carga de verdad AnimationPreloader, con LoadAnimation.
+-- Aparte: PreloadAsync da OK sobre una animación sin bajarla (las carga AnimationPreloader).
 function PreloadAssets.collectAnimationIds(): { string }
 	local found: { [string]: true } = {}
 	local seenTables: { [any]: true } = {}

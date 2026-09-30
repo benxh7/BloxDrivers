@@ -1,5 +1,5 @@
--- Config del sonido usado por WaveTransition (ola de cierre del menú de carga).
--- Mismo asset que UBG a pedido.
+-- Ubicación en Studio: ReplicatedStorage > WaveTransitionConfig (ModuleScript)
+-- Sonido de la ola que cierra el menú de carga (mismo asset que UBG).
 local WaveTransitionConfig = {}
 
 WaveTransitionConfig.SoundId = "rbxassetid://117260647120678"

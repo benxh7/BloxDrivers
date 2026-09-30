@@ -1,18 +1,6 @@
 -- Ubicación en Studio: ServerScriptService > Services > Shop > ShopService (ModuleScript)
---
--- Autoridad de la tienda. Pareja de ShopController (cliente) y ShopConfig (catálogo).
---   · "RequestShopPurchase"(itemId): valida el item y abre el prompt de Roblox. El
---     cliente nunca manda IDs de producto ni precios.
---   · Developer Products: se otorgan en ProcessReceipt. ES ÚNICO POR JUEGO: ningún otro
---     script puede asignar MarketplaceService.ProcessReceipt.
---   · Game Passes: se chequean al entrar (UserOwnsGamePassAsync) y al comprarse; otros
---     servicios preguntan con ShopService.OwnsPass(player, itemId).
---
--- Qué otorga cada Product lo decide un "grant" por Reward.Type, que registra quien
--- maneje esos datos (ej. el futuro DataService):
---   ShopService.RegisterGrant("Cash", function(player, amount) ... return true end)
--- Sin grant registrado la compra queda NotProcessedYet (Roblox la reintenta) en vez de
--- cobrar sin entregar.
+-- Autoridad de la tienda: prompts, ProcessReceipt y Game Passes. Cada Reward.Type se
+-- otorga con ShopService.RegisterGrant(type, fn) desde quien maneje esos datos.
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,13 +17,11 @@ local OWNED_COOLDOWN = 2
 type Grant = (player: Player, amount: number, receipt: { [string]: any }) -> boolean
 
 local grants: { [string]: Grant } = {}
--- ProductId / GamePassId -> itemId de ShopConfig.
 local productToItem: { [number]: string } = {}
 local passToItem: { [number]: string } = {}
--- UserId -> { itemId = true } de Game Passes.
 local ownedPasses: { [number]: { [string]: boolean } } = {}
--- Recibos ya otorgados en ESTE servidor. OJO: no sobrevive a un reinicio; cuando exista
--- DataService, guardar el PurchaseId en el perfil del jugador para que sea idempotente.
+-- Solo en ESTE servidor: no sobrevive un reinicio. Para idempotencia real hay que guardar
+-- el PurchaseId en el perfil (DataService).
 local granted: { [string]: boolean } = {}
 
 for itemId, item in ShopConfig.Items do
@@ -72,7 +58,7 @@ local function loadPasses(player: Player)
 		local ok, owns = pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, passId)
 		if ok and owns then
 			markPass(player, itemId)
-			-- Por si el cliente ya preguntó con GetShopOwned antes de que esto terminara.
+			-- Por si el cliente ya preguntó con GetShopOwned antes de que esto termine.
 			Remotes.fireTo(player, "shopOwned", itemId)
 		elseif not ok then
 			DebugConfig.warn(("[ShopService] UserOwnsGamePassAsync(%d) falló: %s"):format(passId, tostring(owns)))
@@ -112,7 +98,7 @@ local function processReceipt(receipt: { [string]: any }): Enum.ProductPurchaseD
 
 	local player = Players:GetPlayerByUserId(receipt.PlayerId)
 	if not player then
-		-- Se fue antes de otorgar: Roblox reintenta cuando vuelva a entrar.
+		-- Roblox reintenta cuando vuelva a entrar.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
@@ -127,6 +113,7 @@ local function processReceipt(receipt: { [string]: any }): Enum.ProductPurchaseD
 	local grant = grants[reward.Type]
 	if not grant then
 		DebugConfig.warn(("[ShopService] No hay grant registrado para '%s' (item '%s')"):format(reward.Type, itemId))
+		-- NotProcessedYet: Roblox reintenta, en vez de cobrar sin entregar.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
@@ -142,6 +129,7 @@ local function processReceipt(receipt: { [string]: any }): Enum.ProductPurchaseD
 end
 
 function ShopService.Init()
+	-- Único por juego: ningún otro script puede asignar ProcessReceipt.
 	MarketplaceService.ProcessReceipt = processReceipt
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player: Player, passId: number, purchased: boolean)

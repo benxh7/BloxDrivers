@@ -1,11 +1,5 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > UITemplates (ModuleScript)
---
--- Acceso a las plantillas visuales de ReplicatedStorage > UITemplates (tarjetas,
--- slots, filas...). Las plantillas las armás a mano en Studio; los controllers las
--- clonan una vez por cada entrada de su Config (data-driven).
---
---   local card = UITemplates.clone("ShopItemCard")
---   if card then card.Parent = list end
+-- Acceso a las plantillas de ReplicatedStorage > UITemplates (se arman a mano en Studio).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
@@ -27,7 +21,7 @@ local function getFolder(): Instance?
 	return folder
 end
 
--- Devuelve la plantilla original (NO modificarla: clonala con UITemplates.clone).
+-- La original: no modificarla, usar UITemplates.clone.
 function UITemplates.get(name: string): GuiObject?
 	local templates = getFolder()
 	if not templates then
@@ -41,7 +35,6 @@ function UITemplates.get(name: string): GuiObject?
 	return template
 end
 
--- Clon listo para usar (Visible = true, sin padre todavía).
 function UITemplates.clone(name: string): GuiObject?
 	local template = UITemplates.get(name)
 	if not template then

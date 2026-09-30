@@ -1,13 +1,5 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > ClientMain (LocalScript)
---
--- Único punto de arranque del cliente. Espejo de Server/Main:
---   1. UIManager primero, requerido e inicializado SINCRÓNICO: el resto lo usa en su Init.
---   2. Todos los demás ModuleScripts de `Controllers` (orden alfabético) se requieren y
---      después se llama a su `Init()` si lo tienen. Los que empiezan con "_" se ignoran
---      (ej. _TemplateController).
---
--- Sumar un controller nuevo = crear `Controllers/<Nombre>Controller.luau` con Init().
--- No hace falta tocar este archivo.
+-- Arranca UIManager y después todo ModuleScript de `Controllers` (ignora los "_*").
 local Controllers = script.Parent:WaitForChild("Controllers")
 
 local FIRST = "UIManager"
@@ -31,11 +23,11 @@ local function init(name: string, controller: any)
 	end
 end
 
--- 1) UIManager
+-- Sincrónico: los demás controllers lo usan en su Init.
 init(FIRST, load(Controllers:WaitForChild(FIRST) :: ModuleScript))
 
--- 2) El resto: primero TODOS los require (un controller puede requerir a otro en su
--- nivel superior sin depender del orden) y después los Init.
+-- Todos los require antes que los Init: un controller puede requerir a otro en su
+-- nivel superior sin depender del orden.
 local modules: { ModuleScript } = {}
 for _, child in Controllers:GetChildren() do
 	if child:IsA("ModuleScript") and child.Name ~= FIRST and child.Name:sub(1, 1) ~= "_" then
@@ -54,8 +46,7 @@ for _, module in modules do
 	end
 end
 
--- Cada Init en su propio hilo: uno que espera su GUI (WaitForChild) o que falla no
--- frena el arranque de los demás.
+-- Un hilo por Init: uno que espera su GUI o que falla no frena a los demás.
 for _, entry in loaded do
 	task.spawn(init, entry.name, entry.controller)
 end

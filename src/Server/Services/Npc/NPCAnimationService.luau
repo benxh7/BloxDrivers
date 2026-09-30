@@ -1,8 +1,6 @@
 -- Ubicación en Studio: ServerScriptService > Services > Npc > NPCAnimationService (ModuleScript)
---
--- Idle de cada NPC. Corre en el SERVIDOR porque una animación cargada acá replica
--- sola: todos ven al NPC en la MISMA pose, en vez de que cada cliente la arranque
--- cuando le llega y queden desfasados entre sí.
+-- Idle de cada NPC. En el servidor porque así replica: todos lo ven en la misma pose,
+-- sin desfase entre clientes.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -19,7 +17,6 @@ end
 
 local function setupNPC(model: Model)
 	local settings = NPCConfig.get(model)
-	-- Sin idle no es un error: el NPC simplemente se queda quieto.
 	if settings.IdleAnimation == "" then
 		return
 	end
@@ -30,8 +27,7 @@ local function setupNPC(model: Model)
 		return
 	end
 
-	-- El Animator es el que reproduce de verdad; Humanoid:LoadAnimation está deprecado
-	-- y sin Animator la animación no replica a los clientes.
+	-- Humanoid:LoadAnimation está deprecado y sin Animator la animación no replica.
 	local animator = humanoid:FindFirstChildOfClass("Animator")
 	if not animator then
 		animator = Instance.new("Animator")
@@ -41,8 +37,7 @@ local function setupNPC(model: Model)
 	local animation = Instance.new("Animation")
 	animation.AnimationId = settings.IdleAnimation
 
-	-- Una animación de otro dueño no carga y tira error: el NPC se queda quieto, pero
-	-- el resto tiene que seguir andando.
+	-- Una animación de otro dueño tira error: ese NPC queda quieto y el resto sigue.
 	local ok, track = pcall(function()
 		return (animator :: Animator):LoadAnimation(animation)
 	end)
@@ -70,8 +65,7 @@ end
 function NPCAnimationService.Init()
 	NPCConfig.observe(setupNPC, teardownNPC)
 
-	-- Se repite el log con cada jugador que entra: es JUSTO cuando importa saber si el
-	-- NPC sigue animado, y es lo que se ve en la consola al probar.
+	-- Log por cada jugador que entra: es justo cuando importa saber si sigue animado.
 	Players.PlayerAdded:Connect(function()
 		for model, track in tracks do
 			logState(model, track)

@@ -1,35 +1,31 @@
--- Tunables de la cámara del menú de carga (la mueve
--- ReplicatedFirst/LoadingScreen/MenuCamera). Único lugar para retocar el encuadre.
+-- Ubicación en Studio: ReplicatedStorage > MenuCameraConfig (ModuleScript)
+-- Encuadre de la cámara del menú de carga (la mueve LoadingScreen/MenuCamera).
 local MenuCameraConfig = {}
 
--- Punto del lobby alrededor del cual orbita, buscado bajo Workspace. Si no está,
--- se cae al fallback: sin esto la pantalla quedaría con el fondo opaco para siempre.
+-- Punto del lobby (bajo Workspace) alrededor del cual orbita. Sin ninguno de los dos,
+-- el fondo de la carga queda opaco.
 MenuCameraConfig.TargetPath = { "Lobby", "CameraPoint" }
 MenuCameraConfig.FallbackPath = { "Lobby", "LobbySpawn" }
 
--- Segundos de una vuelta completa. Más alto = más lento.
+-- Segundos por vuelta completa (más alto = más lento).
 MenuCameraConfig.OrbitSeconds = 60
--- Distancia horizontal al punto, altura de la cámara y altura a la que mira
--- (Height > LookHeight = la cámara mira hacia abajo).
+-- Height > LookHeight = la cámara mira hacia abajo.
 MenuCameraConfig.Radius = 45
 MenuCameraConfig.Height = 18
 MenuCameraConfig.LookHeight = 4
 MenuCameraConfig.FieldOfView = 65
--- Ángulo inicial en grados: desde dónde arranca la vuelta.
+-- Grados desde donde arranca la vuelta.
 MenuCameraConfig.StartAngle = 0
 
--- Parallax: además de orbitar, la cámara se corre un poco hacia donde está el
--- mouse. Studs por pixel de distancia al centro de la pantalla, y tope en studs.
+-- Parallax hacia el mouse: studs por pixel de distancia al centro, y tope en studs.
 MenuCameraConfig.ParallaxFactor = 0.004
 MenuCameraConfig.ParallaxMax = 4
--- Suavizado del seguimiento (0-1, más alto = más rígido). Corregido por
--- framerate: se siente igual a 30 que a 144 fps.
+-- 0-1, más alto = más rígido. Corregido por framerate.
 MenuCameraConfig.Smoothing = 0.2
 
--- Corremos desde ReplicatedFirst, así que el lobby puede no haber replicado
--- todavía: cuánto esperarlo antes de rendirse y dejar el fondo opaco.
+-- Corre desde ReplicatedFirst: el lobby puede no haber replicado todavía.
 MenuCameraConfig.WaitForTargetSeconds = 20
--- Fade del fondo que descubre la escena 3D, una vez la cámara ya está puesta.
+-- Fade del fondo que descubre la escena 3D.
 MenuCameraConfig.RevealSeconds = 1.2
 
 return MenuCameraConfig

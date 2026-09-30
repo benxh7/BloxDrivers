@@ -1,3 +1,5 @@
+-- Ubicación en Studio: ServerStorage > EasyProfileStore (ModuleScript)
+-- Wrapper sobre ProfileStore: se usa con New(nombre, template) y onPlayerJoined desde un DataService.
 local EasyProfileStore = {}
 EasyProfileStore.__index = EasyProfileStore
 
@@ -17,7 +19,6 @@ EasyProfileStore.SuscribeMessage = EasyProfileStore.BindableMessage.Event
 
 local ProfileStore = require(script:FindFirstChild("ProfileStore"))
 
---// TYPES
 type PublishMessage = {
 	UserId: number,
 	Message: string

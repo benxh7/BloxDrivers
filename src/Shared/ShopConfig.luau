@@ -1,19 +1,10 @@
 -- Ubicación en Studio: ReplicatedStorage > ShopConfig (ModuleScript)
---
--- Catálogo de la tienda (data-driven). ShopController arma las tarjetas recorriendo
--- `Rows`; ShopService valida cada compra contra `Items`. Agregar un item = sumar su
--- entrada en `Items` y su Id en alguna fila de `Rows`. Nada más.
---
--- Kind:
---   "Product"  -> Developer Product (se compra muchas veces). ShopService lo otorga en
---                 ProcessReceipt según su `Reward`.
---   "GamePass" -> Game Pass (una sola vez). La tarjeta pasa a "OWNED".
---   "View"     -> no se compra: el botón dice VIEW y abre la ventana `ViewTarget` de UIManager.
+-- Catálogo y estilo de la tienda. Agregar un item = su entrada en `Items` y su Id en `Rows`.
+-- Kind: "Product" (varias compras), "GamePass" (una vez, pasa a OWNED) o "View" (abre ViewTarget).
 local ShopConfig = {}
 
 export type Reward = {
-	-- Tipo de recompensa. ShopService necesita un grant registrado para este Type
-	-- (ShopService.RegisterGrant); si no hay, la compra queda pendiente.
+	-- Necesita un grant registrado (ShopService.RegisterGrant) o la compra queda pendiente.
 	Type: string,
 	Amount: number,
 }
@@ -26,66 +17,57 @@ export type IconLayout = {
 export type Item = {
 	Kind: "Product" | "GamePass" | "View",
 	Title: string,
-	-- Línea chica debajo de la barra del título (ej. "- Instantly Open Crates").
 	Subtitle: string?,
 	Description: string?,
-	-- ID del Developer Product o Game Pass. 0 = todavía sin crear: el botón avisa y no compra.
+	-- 0 = todavía sin crear: el botón avisa y no compra.
 	ProductId: number?,
-	-- Precio que se MUESTRA. El que se cobra lo define Roblox según el producto.
+	-- Solo se MUESTRA: el que se cobra lo define Roblox.
 	Price: number?,
 	Reward: Reward?,
 	ViewTarget: string?,
-	-- Fondo: imagen a tarjeta completa (rbxassetid://0 = sin imagen) y, si no hay, un
-	-- degradé con `Color`.
+	-- Sin imagen (rbxassetid://0), el fondo es el degradé de `Color`.
 	Image: string,
 	Color: { Color3 },
-	-- Dibujo centrado encima del fondo (ícono del item). `IconLayout` lo ubica en Scale.
 	Icon: string?,
 	IconLayout: IconLayout?,
-	-- Color del brillo exterior (y de la línea clara interior). Todas las tarjetas lo
-	-- llevan; nil = solo borde negro.
+	-- Brillo exterior y línea clara interior. nil = solo borde negro.
 	Glow: Color3?,
-	-- Anillo sólido de color entre el borde negro y el brillo (px a 1080). Default
-	-- Style.RingThickness = 0: solo brillo. Lo usan el bundle y el pase.
+	-- Anillo sólido entre el borde negro y el brillo (px).
 	RingThickness: number?,
-	-- Color del borde interior (default negro).
 	Outline: Color3?,
 	TitleColor: Color3?,
 	TitleStroke: Color3?,
 	DescriptionColor: Color3?,
-	-- "Right" = descripción centrada en la mitad derecha (estilo bundle). Default izquierda.
+	-- "Right" = centrada en la mitad derecha (estilo bundle).
 	DescriptionAlign: ("Left" | "Right")?,
-	-- Puntos halftone en la esquina (default true) y su color.
+	-- Puntos halftone de la esquina (default true).
 	Pattern: boolean?,
 	PatternColor: Color3?,
 	PatternTransparency: number?,
-	-- Rayos de fondo (estilo VIP).
 	Rays: boolean?,
-	-- Botón azul con gema arriba del precio. El flujo de gemas todavía no existe.
+	-- Botón de gema (el flujo de gemas todavía no existe).
 	Gem: boolean?,
-	-- Tarjeta destacada (bundle): botones más grandes y sin hover.
+	-- Bundle: botones más grandes y sin hover.
 	Featured: boolean?,
-	-- Estilo "pase": sin barra de título, título grande a la izquierda y sin hover.
+	-- Pase: sin barra de título, título grande a la izquierda y sin hover.
 	Banner: boolean?,
 }
 
 export type Row = {
 	Items: { string },
-	-- Proporción ancho/alto de cada tarjeta de la fila.
+	-- Ancho/alto de cada tarjeta.
 	CardAspect: number,
-	-- Fracción del ancho que ocupa la fila (default 1). Ej. 0.47 = tarjeta destacada centrada.
+	-- Fracción del ancho que ocupa la fila (default 1).
 	Width: number?,
 }
 
--- ─── Assets de la GUI (pegá tus IDs acá) ────────────────────────────────────────
--- El símbolo de Robux del precio NO es una imagen: es el ícono de texto de Roblox
--- (utf8.char(0xE002)) dentro del PriceLabel, así toma el mismo borde que los números.
+-- El de Robux no va acá: es el glifo de texto utf8.char(0xE002), con el mismo borde que el precio.
 ShopConfig.Icons = {
 	Gift = "rbxassetid://114937842017271",
 	Gem = "rbxassetid://123458803098584",
 }
 
--- Imágenes de las tarjetas (placeholders generados; reemplazar por el arte final).
+-- Placeholders: reemplazar por el arte final.
 local ART = {
 	Coins = "rbxassetid://77032605127812",
 	Crown = "rbxassetid://81455229876046",
@@ -93,8 +75,7 @@ local ART = {
 	PassBackground = "rbxassetid://104433970768289",
 }
 
--- Colores (arriba, abajo) del degradé de cada botón. Buy / View / Owned son los
--- estados del botón de compra; Gift y Gem, los botones cuadrados.
+-- Degradé (arriba, abajo). Buy / View / Owned son los estados del botón de compra.
 ShopConfig.ButtonColors = {
 	Buy = { Color3.fromRGB(105, 225, 25), Color3.fromRGB(40, 195, 10) },
 	View = { Color3.fromRGB(110, 205, 255), Color3.fromRGB(40, 150, 230) },
@@ -103,72 +84,58 @@ ShopConfig.ButtonColors = {
 	Gem = { Color3.fromRGB(35, 95, 250), Color3.fromRGB(40, 175, 255) },
 }
 
--- Borde oscuro, aro claro interior y texto del precio de TODOS los botones de las
--- tarjetas (px a 1080 de alto).
+-- Todos los botones de las tarjetas. Grosores en px a 1080 de alto.
 ShopConfig.ButtonStyle = {
-	-- Esquinas de los botones (Scale del lado más corto).
+	-- Scale del lado más corto.
 	CornerRadius = 0.05,
 	OutlineColor = Color3.fromRGB(18, 18, 32),
 	OutlineThickness = 3.5,
-	-- Aro claro pegado por dentro del borde negro: mismo degradé del botón aclarado
-	-- hacia el blanco (RimLighten 0..1). RimThickness = grosor en px.
+	-- Aro claro por dentro del borde: el degradé del botón aclarado (RimLighten 0..1).
 	RimThickness = 3,
 	RimLighten = 0.45,
 	PriceFont = Font.new("rbxasset://fonts/families/FredokaOne.json"),
 	PriceStrokeColor = Color3.fromRGB(18, 18, 32),
 	PriceStrokeThickness = 3,
-	-- Separación entre el botón de regalo y el de compra (fracción del ancho de Actions).
+	-- Separación regalo-compra y gema-compra (fracción del ancho de Actions).
 	Gap = 0.06,
 }
 
--- ─── Estilo de las tarjetas (todo lo visual que se ajusta a mano está acá) ─────────
--- Los tamaños en px están pensados para una pantalla de 1080 px de alto; en pantallas
--- más chicas ShopController los achica en proporción.
+-- Tamaños en px a 1080 de alto: en pantallas más chicas se achican en proporción.
 ShopConfig.Style = {
-	-- Radio de las esquinas de TODAS las capas de la tarjeta (Scale del lado más corto).
+	-- Esquinas de todas las capas (Scale del lado más corto).
 	CornerRadius = 0.12,
-	-- Grosor del borde negro (px).
 	OutlineThickness = 6,
-	-- Brillo exterior difuminado (como una sombra de color), con la forma exacta de la
-	-- tarjeta: esquinas redondas como las suyas.
-	--   Spread = hasta dónde llega por fuera del borde (px); ahí ya es invisible.
-	--   Opacity = intensidad pegado al borde (0..1).
-	--   Curve = cómo se esfuma: 1 = parejo, 2 = fuerte en el borde y cola larga suave.
-	--   Layers = pasos del degradado (1 por px de Spread = sin bandas).
+	-- Spread = px por fuera del borde, Opacity = intensidad pegado al borde, Curve = 1 parejo
+	-- / 2 fuerte en el borde y cola suave, Layers = 1 por px de Spread (sin bandas).
 	Glow = { Spread = 22, Opacity = 0.45, Curve = 2, Layers = 22 },
-	-- Anillo sólido por defecto (0 = ninguno). Cada item puede pedir el suyo con RingThickness.
+	-- Anillo por defecto (0 = ninguno).
 	RingThickness = 0,
-	-- Línea clara pegada al borde por dentro: cuánto se aclara el color del brillo (0..1).
+	-- Cuánto se aclara el color del brillo para la línea interior (0..1).
 	InnerLineLighten = 0.45,
-	-- Tamaño máximo del texto de la descripción, como fracción del alto de la tarjeta.
+	-- Texto máximo de la descripción, en fracción del alto de la tarjeta.
 	DescriptionTextSize = 0.115,
-	-- Espaciado de la lista, como fracción de su ancho (CardGap: entre tarjetas de una fila).
-	-- SidePadding / EdgePadding dejan lugar para que el brillo no se corte contra el borde.
+	-- Fracciones del ancho de la lista. Los paddings dejan lugar para que no se corte el brillo.
 	Layout = { CardGap = 0.055, RowGap = 0.065, SidePadding = 0.06, EdgePadding = 0.055 },
-	-- Hover: Scale = cuánto crece, Rotation = grados hacia la derecha, Duration = segundos.
-	-- Las tarjetas destacadas (Featured) y los pases (Banner) no tienen hover.
+	-- Scale = cuánto crece, Rotation = grados a la derecha, Duration = segundos.
 	Hover = {
 		Card = { Scale = 1.03, Duration = 0.3 },
 		Button = { Scale = 1.07, Rotation = 3, Duration = 0.3 },
 	},
-	-- Desenfoque del mundo mientras la tienda está abierta.
+	-- Desenfoque del mundo con la tienda abierta.
 	Blur = { Size = 16, Duration = 0.2 },
-	-- Apertura de la ventana: arranca en FromScale (chiquita, desde el centro) y crece
-	-- hasta su tamaño normal en Duration segundos.
+	-- Se abre desde el centro, de FromScale a su tamaño normal en Duration segundos.
 	Open = { FromScale = 0.1, Duration = 0.35 },
 }
 
--- Sonidos que suenan juntos al abrir la tienda.
+-- Suenan juntos al abrir la tienda.
 ShopConfig.Sounds = {
 	Open = { "rbxassetid://127488139302452", "rbxassetid://98891178613563" },
 	Volume = 0.5,
 }
 
--- Botón de regalo. El flujo de regalar todavía no existe: con true se muestra y avisa
--- por consola al tocarlo.
+-- El flujo de regalar todavía no existe: con true el botón solo avisa por consola.
 ShopConfig.GiftEnabled = true
 
--- ─── Items ──────────────────────────────────────────────────────────────────────
 ShopConfig.Items = {
 	StarterBundle = {
 		Kind = "Product",
@@ -275,7 +242,7 @@ ShopConfig.Items = {
 	},
 } :: { [string]: Item }
 
--- ─── Filas (orden de arriba hacia abajo) ────────────────────────────────────────
+-- Filas de arriba hacia abajo.
 ShopConfig.Rows = {
 	{ Items = { "StarterBundle" }, CardAspect = 1.32, Width = 0.47 },
 	{ Items = { "ChampionPass" }, CardAspect = 2.85, Width = 0.97 },

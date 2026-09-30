@@ -1,13 +1,6 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Components > MapVoteBoard (ModuleScript)
---
--- Componente reutilizable: UNA vista horizontal de la votación de mapa (cards en fila).
--- Hoy NADIE lo usa (en UBG era para un holograma de pared); queda como base para una
--- segunda vista, ej. un tablero de solo lectura en el lobby (`interactive = false`).
--- Las fotitos y sus posiciones salen de VoterAvatars, así coinciden con el panel
--- principal (VotingMapController).
---
---   local board = MapVoteBoard.new({ cardsFrame = frame, layout = listLayout, template = card })
---   board:build(catalog); board:paint(state, nil, localUserId); board:reveal(winnerId)
+-- Segunda vista reutilizable de la votación (cards en fila), sin uso todavía. Ej.: un
+-- tablero de solo lectura en el lobby con `interactive = false`.
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -19,12 +12,15 @@ local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
 local MapVoteBoard = {}
 MapVoteBoard.__index = MapVoteBoard
 
-local VOTED_GOLD = Color3.fromRGB(255, 200, 45) -- voto propio (o ganador)
-local FALLBACK_COLOR = Color3.fromRGB(38, 41, 50) -- fondo del mapa sin imagen
-local AVATAR_SIZE = 0.25 -- Scale del ALTO de la imagen (cuadradas por RelativeYY)
+-- Voto propio o ganador.
+local VOTED_GOLD = Color3.fromRGB(255, 200, 45)
+-- Fondo del mapa sin imagen.
+local FALLBACK_COLOR = Color3.fromRGB(38, 41, 50)
+-- Fracción del ALTO de la imagen (cuadradas por RelativeYY).
+local AVATAR_SIZE = 0.25
 
-local WINNER_MOVE_DURATION = 0.45 -- el ganador viaja al centro
-local LOSER_FADE_DURATION = 0.25 -- las otras se achican y desaparecen
+local WINNER_MOVE_DURATION = 0.45
+local LOSER_FADE_DURATION = 0.25
 
 type MapEntry = { Id: string, Name: string, Image: string }
 
@@ -44,8 +40,7 @@ function MapVoteBoard.new(config: {
 	return self
 end
 
--- Reparte el ancho en Scale descontando el padding del UIListLayout: con Scale el
--- reparto sigue valiendo aunque cambie la resolución, sin recalcular.
+-- En Scale y descontando el padding: sigue valiendo si cambia la resolución.
 function MapVoteBoard:relayout()
 	local count = #self.cardFrames
 	if count == 0 then
@@ -103,12 +98,11 @@ function MapVoteBoard:build(list: { MapEntry })
 
 		if self.interactive then
 			image.Activated:Connect(function()
-				-- Sin popButton a propósito: agrandaría la card entera junto con las fotitos.
+				-- Sin popButton: agrandaría la card entera con las fotitos.
 				UIEffects.playClickSound()
 				Remotes.event("CastMapVote"):FireServer(map.Id)
 			end)
 		else
-			-- Vista de solo lectura: que no se comporte como botón.
 			image.Active = false
 			image.AutoButtonColor = false
 		end
@@ -117,8 +111,7 @@ function MapVoteBoard:build(list: { MapEntry })
 	self:relayout()
 end
 
--- Repinta contadores, color del voto propio y fotitos. Con la votación cerrada, el
--- GANADOR queda dorado (aunque no lo hayas votado).
+-- Con la votación cerrada, el GANADOR queda dorado aunque no lo hayas votado.
 function MapVoteBoard:paint(state: { [string]: { number } }?, winnerMapId: string?, localUserId: number)
 	if not state then
 		return
@@ -156,7 +149,7 @@ function MapVoteBoard:paint(state: { [string]: { number } }?, winnerMapId: strin
 			avatar.Position = UDim2.fromScale(pos.X, pos.Y)
 			avatar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 			avatar.BackgroundTransparency = 0.4
-			-- No debe interceptar el click del ImageButton.
+			-- No intercepta el click del ImageButton.
 			avatar.Active = false
 
 			local avatarCorner = Instance.new("UICorner")
@@ -169,9 +162,8 @@ function MapVoteBoard:paint(state: { [string]: { number } }?, winnerMapId: strin
 	end
 end
 
--- El UIListLayout posiciona a TODOS sus hijos: para mover una card sola se congela la
--- posición de cada una (en Scale) y se desparenta el layout. Nunca se destruye: es la
--- instancia de Studio, y `build` lo devuelve a su lugar.
+-- El UIListLayout mueve a TODOS sus hijos: se congelan las posiciones y se desparenta
+-- (no se destruye: es el de Studio, y `build` lo devuelve).
 function MapVoteBoard:reveal(mapId: string)
 	local winnerCard: GuiObject? = nil
 	local framePosition = self.cardsFrame.AbsolutePosition
@@ -193,7 +185,6 @@ function MapVoteBoard:reveal(mapId: string)
 
 	for _, card in self.cardFrames do
 		if card == winnerCard then
-			-- Al centro del contenedor, respetando el AnchorPoint de la card.
 			TweenService:Create(
 				card,
 				TweenInfo.new(WINNER_MOVE_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),

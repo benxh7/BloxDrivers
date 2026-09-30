@@ -1,13 +1,6 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > UIEffects (ModuleScript)
---
--- Efectos y helpers de UI compartidos por TODOS los controllers: animación de
--- ventanas (popIn / popOut), "pop" de botón, sonidos de click y búsqueda tolerante
--- de hijos armados en Studio. Solo cliente.
---
--- Todas las animaciones van por UIScale y no por Size/Position: no pelean con
--- UIAspectRatioConstraint, UIListLayout ni con el diseño en Scale de Studio.
--- OJO: Roblox aplica UN solo UIScale por objeto. No pongas un UIScale propio en el
--- Frame `Main` de una ventana ni en un botón: UIEffects crea y usa el suyo.
+-- Animaciones por UIScale (no Size/Position: no pelean con layouts ni constraints).
+-- Roblox aplica UN solo UIScale por objeto: no pongas uno propio en un Main ni en un botón.
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -23,32 +16,28 @@ local UIEffects = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- ─── Ajustes ────────────────────────────────────────────────────────────────────
-
--- Mismo asset que UBG a pedido (si da error de permisos, resubirlo a esta cuenta).
+-- Asset de UBG: si da error de permisos, resubirlo a esta cuenta.
 UIEffects.ClickSoundId = "rbxassetid://103282937573040"
 UIEffects.ClickVolume = 0.5
--- false = los botones (bindButton) no suenan al clickear; el hover sí.
+-- false = bindButton no suena al clickear.
 UIEffects.ClickSoundEnabled = false
 
--- Sonido al pasar el mouse por encima de un botón (bindHover sobre un GuiButton).
+-- Suena en bindHover sobre un GuiButton.
 UIEffects.HoverSoundId = "rbxassetid://139800881181209"
 UIEffects.HoverVolume = 0.5
 
--- "Pop" de botón: cuánto crece y cuánto tarda cada mitad del rebote.
+-- Pop del click: cuánto crece y cuánto tarda cada mitad del rebote.
 UIEffects.PopScale = 1.12
 UIEffects.PopDuration = 0.09
 
--- Hover (UIEffects.bindHover): escala por defecto y duración del tween.
 UIEffects.HoverScale = 1.06
 UIEffects.HoverDuration = 0.14
 
--- Ventanas: desde qué escala entran / hacia cuál salen, y cuánto tardan.
+-- Escala desde la que entran las ventanas y hacia la que salen.
 UIEffects.WindowHiddenScale = 0.85
 UIEffects.WindowOpenDuration = 0.22
 UIEffects.WindowCloseDuration = 0.14
 
--- Cuánto vive un clon de playOneShot antes de que Debris lo borre.
 UIEffects.OneShotLifetime = 10
 
 local POP_OUT = TweenInfo.new(UIEffects.PopDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -71,10 +60,7 @@ local function getScale(object: GuiObject, name: string): UIScale
 	return created
 end
 
--- ─── Sonidos ────────────────────────────────────────────────────────────────────
-
--- Uno solo, reutilizable y precargado: creando un Sound por click, el primero
--- esperaba a que el asset cargara y sonaba tarde.
+-- Uno solo y precargado: uno por click hacía que el primero sonara tarde.
 local clickSound = Instance.new("Sound")
 clickSound.Name = "UIClick"
 clickSound.SoundId = UIEffects.ClickSoundId
@@ -101,13 +87,11 @@ function UIEffects.playClickSound()
 	clickSound:Play()
 end
 
--- Pasar el mouse rápido por varios botones dispara varios hover: van con clon
--- descartable (playOneShot) para que no se corten entre sí.
+-- Clon descartable: varios hover seguidos no se cortan entre sí.
 function UIEffects.playHoverSound()
 	UIEffects.playOneShot(hoverSound)
 end
 
--- Sonido suelto que se destruye solo al terminar.
 function UIEffects.playSound(soundId: string, volume: number?)
 	if soundId == "" or soundId == "rbxassetid://0" then
 		return
@@ -122,7 +106,6 @@ function UIEffects.playSound(soundId: string, volume: number?)
 	sound:Play()
 end
 
--- Crea un Sound reutilizable en SoundService (nil si el ID está vacío).
 function UIEffects.makeSound(name: string, soundId: string, volume: number): Sound?
 	if soundId == "" or soundId == "rbxassetid://0" then
 		return nil
@@ -135,8 +118,7 @@ function UIEffects.makeSound(name: string, soundId: string, volume: number): Sou
 	return sound
 end
 
--- Para sonidos que se pisan entre sí: un :Play() sobre el MISMO Sound que todavía
--- suena reinicia el clip, así que va un clon descartable.
+-- :Play() sobre un Sound que todavía suena reinicia el clip: va un clon descartable.
 function UIEffects.playOneShot(sound: Sound?)
 	if not sound then
 		return
@@ -147,11 +129,8 @@ function UIEffects.playOneShot(sound: Sound?)
 	Debris:AddItem(clone, UIEffects.OneShotLifetime)
 end
 
--- ─── Botones ────────────────────────────────────────────────────────────────────
-
 local popping: { [GuiObject]: boolean } = {}
--- Escala de reposo de cada botón con hover activo (sin entrada = 1). El pop del click
--- crece desde acá y vuelve acá, así hover y click comparten el mismo UIScale.
+-- Escala de reposo con hover: el pop crece desde acá y vuelve acá (comparten UIScale).
 local hoverBase: { [GuiObject]: number } = {}
 
 function UIEffects.popButton(button: GuiObject)
@@ -172,8 +151,7 @@ function UIEffects.popButton(button: GuiObject)
 	grow:Play()
 end
 
--- Conecta un botón con click + pop + callback. `Activated` cubre mouse, touch y
--- gamepad, así que funciona igual en PC y celular. Devuelve la conexión.
+-- `Activated` cubre mouse, touch y gamepad.
 function UIEffects.bindButton(button: GuiButton, callback: () -> ()): RBXScriptConnection
 	return button.Activated:Connect(function()
 		UIEffects.playClickSound()
@@ -183,26 +161,20 @@ function UIEffects.bindButton(button: GuiButton, callback: () -> ()): RBXScriptC
 end
 
 export type HoverOptions = {
-	-- Escala con el mouse encima (default UIEffects.HoverScale).
 	Scale: number?,
-	-- Grados que gira hacia la derecha con el mouse encima (default 0 = no gira).
+	-- Grados hacia la derecha (default 0).
 	Rotation: number?,
-	-- Qué objeto gira (default el mismo botón). Ej. solo el ícono de un botón del HUD.
+	-- Qué gira (default el mismo objeto). Ej. solo el ícono de un botón del HUD.
 	RotateTarget: GuiObject?,
-	-- Objeto que solo se ve con el mouse encima (ej. el marco detrás de un ícono): un
-	-- CanvasGroup (usa GroupTransparency) o un ImageLabel (ImageTransparency). Con hover
-	-- toma la transparencia que tiene en Studio; en reposo queda invisible.
+	-- Visible solo con hover, con la transparencia que tiene en Studio.
 	Reveal: (CanvasGroup | ImageLabel)?,
-	-- Segundos de la transición (default UIEffects.HoverDuration). Con Duration propia la
-	-- curva es Quint: arranca rápido y frena suave, se siente más "smooth".
+	-- Con Duration propia la curva es Quint (arranca rápido y frena suave).
 	Duration: number?,
-	-- Sonido de hover. Default: sí en botones (GuiButton), no en el resto (ej. tarjetas).
+	-- Default: sí en GuiButton, no en el resto (ej. tarjetas).
 	Sound: boolean?,
 }
 
--- Hover: crece un poco y (opcional) gira hacia la derecha; vuelve al salir el mouse.
--- En pantallas solo táctiles no se conecta: sin mouse, MouseLeave no llega nunca y el
--- botón quedaría agrandado.
+-- En pantallas solo táctiles no se conecta: MouseLeave no llega nunca y quedaría agrandado.
 function UIEffects.bindHover(object: GuiObject, options: HoverOptions?)
 	local opts: HoverOptions = options or {}
 	local reveal = opts.Reveal
@@ -229,7 +201,7 @@ function UIEffects.bindHover(object: GuiObject, options: HoverOptions?)
 			TweenService:Create(reveal, info, { [revealProperty] = if hovered then revealTransparency else 1 }):Play()
 		end
 		hoverBase[object] = if hovered then hoverScale else nil
-		-- Si hay un pop en curso, él mismo vuelve a la escala nueva al terminar.
+		-- Un pop en curso vuelve solo a la escala nueva al terminar.
 		if not popping[object] then
 			TweenService:Create(scale, info, { Scale = hoverBase[object] or 1 }):Play()
 		end
@@ -249,12 +221,9 @@ function UIEffects.bindHover(object: GuiObject, options: HoverOptions?)
 	end)
 end
 
--- ─── Ventanas ───────────────────────────────────────────────────────────────────
-
 local windowTweens: { [GuiObject]: Tween } = {}
 
--- Cancela el tween anterior de la misma ventana: abrir/cerrar rápido nunca deja la
--- ventana a medio camino ni ejecuta el "ocultar" de un cierre ya reemplazado.
+-- Cancela el anterior: abrir/cerrar rápido no deja la ventana a medio camino ni oculta de más.
 local function playWindowTween(frame: GuiObject, info: TweenInfo, goal: number, onCompleted: (() -> ())?)
 	local previous = windowTweens[frame]
 	if previous then
@@ -274,9 +243,7 @@ local function playWindowTween(frame: GuiObject, info: TweenInfo, goal: number, 
 	tween:Play()
 end
 
--- Muestra la ventana creciendo con un rebote. `hiddenScale` = desde qué tamaño arranca
--- (default UIEffects.WindowHiddenScale) y `duration` cuánto tarda en llegar a 1. Crece
--- desde el AnchorPoint del frame: con 0.5, 0.5 se abre desde el centro.
+-- Crece desde el AnchorPoint: con 0.5, 0.5 se abre desde el centro.
 function UIEffects.popIn(frame: GuiObject, hiddenScale: number?, duration: number?)
 	if not frame.Visible then
 		getScale(frame, WINDOW_SCALE_NAME).Scale = hiddenScale or UIEffects.WindowHiddenScale
@@ -288,8 +255,7 @@ function UIEffects.popIn(frame: GuiObject, hiddenScale: number?, duration: numbe
 	playWindowTween(frame, info, 1)
 end
 
--- Achica la ventana y la oculta al terminar. `onHidden` corre solo si el cierre
--- terminó de verdad (no si un popIn lo interrumpió).
+-- `onHidden` corre solo si el cierre terminó de verdad (no si lo interrumpió un popIn).
 function UIEffects.popOut(frame: GuiObject, onHidden: (() -> ())?, hiddenScale: number?)
 	if not frame.Visible then
 		if onHidden then
@@ -305,10 +271,7 @@ function UIEffects.popOut(frame: GuiObject, onHidden: (() -> ())?, hiddenScale: 
 	end)
 end
 
--- ─── Búsqueda de hijos armados en Studio ────────────────────────────────────────
-
--- WaitForChild con timeout + warn: un nombre que no coincide EXACTO con lo armado en
--- Studio no debe colgar el script sin aviso.
+-- Con timeout y aviso: un nombre mal escrito en Studio no cuelga el script en silencio.
 function UIEffects.findChild(parent: Instance, name: string, tag: string?): Instance?
 	local child = parent:WaitForChild(name, 5)
 	if not child then

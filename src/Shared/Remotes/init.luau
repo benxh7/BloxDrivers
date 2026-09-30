@@ -1,44 +1,29 @@
 -- Ubicación en Studio: ReplicatedStorage > Remotes (ModuleScript)
---
--- Punto ÚNICO de acceso a los RemoteEvents / RemoteFunctions del juego, desde el
--- cliente y desde el servidor. Las instancias viven como hijos de este mismo
--- ModuleScript, así que en el explorador se ven en ReplicatedStorage > Remotes > <Nombre>.
---
---   Servidor: al primer `require` crea TODOS los remotes declarados abajo.
---   Cliente:  los espera bajo demanda (WaitForChild) la primera vez que se piden.
---
--- Agregar un remote nuevo = sumar su nombre a EVENTS o FUNCTIONS. Nada más.
---
--- Uso:
---   local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
---   Remotes.event("CastMapVote"):FireServer(mapId)                      -- cliente
---   Remotes.onServerEvent("CastMapVote", handler, 0.25)                -- servidor (con cooldown)
---   Remotes.fireAll("mapVoteTick", 10) / Remotes.onUpdate("mapVoteTick", fn)  -- bus UpdateUI
+-- Única fuente de RemoteEvents/Functions: agregar uno = sumar su nombre a EVENTS o
+-- FUNCTIONS. El servidor los crea como hijos de este módulo; el cliente los espera.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local IS_SERVER = RunService:IsServer()
 
--- RemoteEvents del juego. Un comentario por grupo para saber quién los usa.
 local EVENTS = {
-	-- Bus genérico servidor → cliente: (evento: string, ...payload). Ver fireAll / onUpdate.
+	-- Bus servidor → cliente: (evento, ...payload). Ver fireAll / onUpdate.
 	"UpdateUI",
 
-	-- LoadingScreen: el cliente avisa que terminó de cargar.
+	-- LoadingScreen.
 	"SetLoadingComplete",
 
-	-- Map Vote (MapVoteService ↔ VotingMapController).
+	-- Map Vote.
 	"CastMapVote",
 	"RequestMapVoteState",
 	"DebugMapVote",
 
-	-- Tienda (ShopController → ShopService): el cliente manda solo el Id del item.
+	-- Tienda.
 	"RequestShopPurchase",
 }
 
--- RemoteFunctions del juego (cliente pide y espera respuesta).
 local FUNCTIONS: { string } = {
-	-- Tienda: Ids de los Game Passes que ya tiene el jugador.
+	-- Tienda.
 	"GetShopOwned",
 }
 
@@ -46,8 +31,7 @@ local UPDATE_UI = "UpdateUI"
 
 local Remotes = {}
 
--- nombre -> ClassName esperado. Pedir un nombre no declarado es un error de tipeo:
--- se corta enseguida en vez de quedarse esperando para siempre un remote que no existe.
+-- Un nombre no declarado es un typo: error inmediato en vez de esperar para siempre.
 local declared: { [string]: string } = {}
 for _, name in EVENTS do
 	declared[name] = "RemoteEvent"
@@ -58,8 +42,8 @@ end
 
 local cache: { [string]: Instance } = {}
 
--- Un ModuleScript compartido corre su nivel superior UNA VEZ POR VM: solo el servidor
--- crea las instancias y el cliente las espera; si no, cada lado tendría copias sueltas.
+-- El nivel superior corre una vez por VM: solo el servidor crea las instancias, o cada
+-- lado tendría copias sueltas.
 if IS_SERVER then
 	for name, className in declared do
 		local remote = Instance.new(className)
@@ -90,10 +74,7 @@ function Remotes.func(name: string): RemoteFunction
 	return get(name, "RemoteFunction") :: RemoteFunction
 end
 
--- ─── Servidor: listeners con rate limit ─────────────────────────────────────────
--- Todo lo que llega del cliente es controlado por el cliente: el handler igual tiene
--- que validar tipos y rangos. El cooldown solo frena el spam (un exploiter puede
--- disparar un remote miles de veces por segundo).
+-- El cooldown solo frena el spam: el handler igual tiene que validar tipos y rangos.
 
 local lastCall: { [Player]: { [string]: number } } = {}
 
@@ -115,8 +96,7 @@ local function allow(player: Player, name: string, cooldown: number?): boolean
 	return true
 end
 
--- Conecta un handler a un RemoteEvent. Los pedidos que llegan antes de `cooldown`
--- segundos desde el último del mismo jugador se descartan en silencio.
+-- Pedidos del mismo jugador antes de `cooldown` segundos se descartan en silencio.
 function Remotes.onServerEvent(name: string, handler: (player: Player, ...any) -> (), cooldown: number?): RBXScriptConnection
 	assert(IS_SERVER, "[Remotes] onServerEvent solo se usa desde el servidor")
 	return Remotes.event(name).OnServerEvent:Connect(function(player: Player, ...)
@@ -126,7 +106,7 @@ function Remotes.onServerEvent(name: string, handler: (player: Player, ...any) -
 	end)
 end
 
--- Igual para RemoteFunctions. Un pedido descartado por cooldown devuelve nil.
+-- Un pedido descartado por cooldown devuelve nil.
 function Remotes.onServerInvoke(name: string, handler: (player: Player, ...any) -> ...any, cooldown: number?)
 	assert(IS_SERVER, "[Remotes] onServerInvoke solo se usa desde el servidor")
 	Remotes.func(name).OnServerInvoke = function(player: Player, ...)
@@ -143,9 +123,8 @@ if IS_SERVER then
 	end)
 end
 
--- ─── Bus UpdateUI (servidor → cliente) ──────────────────────────────────────────
--- Un solo RemoteEvent multiplexado por nombre de evento: sirve para avisos de UI que
--- no justifican un remote propio. El cliente se suscribe por nombre con onUpdate.
+-- Bus UpdateUI: un solo RemoteEvent por nombre de evento, para avisos que no justifican
+-- un remote propio.
 
 function Remotes.fireAll(event: string, ...: any)
 	Remotes.event(UPDATE_UI):FireAllClients(event, ...)
@@ -158,9 +137,8 @@ end
 local updateHandlers: { [string]: { (...any) -> () } } = {}
 local updateConnection: RBXScriptConnection? = nil
 
--- Cliente: `handler(...)` corre cada vez que el servidor manda `event`. Devuelve una
--- función para desuscribirse. Cada handler corre en su propio hilo: si uno falla, los
--- demás igual reciben el evento.
+-- Devuelve la función para desuscribirse. Un hilo por handler: si uno falla, los demás
+-- reciben el evento igual.
 function Remotes.onUpdate(event: string, handler: (...any) -> ()): () -> ()
 	assert(not IS_SERVER, "[Remotes] onUpdate solo se usa desde el cliente")
 

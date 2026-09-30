@@ -1,14 +1,5 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Controllers > TopbarController (ModuleScript)
---
--- Íconos del topbar (TopbarPlus). La identidad de cada ícono (arte, texto, orden,
--- lado) vive en Shared/TopbarConfig; acá solo va el comportamiento.
---
--- Hoy solo hay íconos de DEBUG (solo Studio):
---   · "Map Vote (real)": dispara DebugMapVote y corre la votación REAL en el servidor.
---   · "Map Vote (mock)": simulación 100% local, sin tocar el servidor.
---
--- Para un ícono de producción que abre una ventana: sumá su entrada en
--- TopbarConfig.Icons y en WINDOW_ICONS (nombre del ícono -> ventana de UIManager).
+-- Comportamiento de los íconos del topbar (el arte y el orden van en TopbarConfig).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Icon = require(ReplicatedStorage:WaitForChild("TopbarPlus"):WaitForChild("Icon"))
@@ -20,10 +11,10 @@ local VotingMapController = require(script.Parent:WaitForChild("VotingMapControl
 
 local TopbarController = {}
 
--- Ícono (clave de TopbarConfig.Icons) -> ventana de UIManager. Vacío por ahora.
+-- Ícono (clave de TopbarConfig.Icons) -> ventana de UIManager.
 local WINDOW_ICONS: { [string]: string } = {}
 
--- Evita duplicar un ícono si el controller se re-corre (play-testing en Studio).
+-- Un re-run del controller en Studio no debe duplicar el ícono.
 local function newIcon(name: string)
 	local existing = Icon.getIcon(name)
 	if existing then
@@ -34,7 +25,7 @@ end
 
 local function createWindowIcon(iconName: string, windowName: string)
 	local icon = TopbarConfig.apply(newIcon(iconName), iconName)
-	-- El ícono refleja el estado de la ventana, la abra quien la abra (HUD, NPC, etc.).
+	-- Refleja el estado de la ventana, la abra quien la abra (HUD, NPC, etc.).
 	icon.selected:Connect(function()
 		UIManager.Open(windowName)
 	end)
@@ -68,8 +59,7 @@ function TopbarController.Init()
 		createWindowIcon(iconName, windowName)
 	end
 
-	-- SOLO en Studio. En el juego publicado ni se crean, y el servidor rechaza el remote
-	-- con el mismo gate (DebugConfig.CHEATS_ENABLED) si igual se dispara.
+	-- Solo Studio. El servidor rechaza DebugMapVote con el mismo gate si igual se dispara.
 	if DebugConfig.CHEATS_ENABLED then
 		createDebugIcons()
 	end

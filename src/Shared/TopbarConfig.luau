@@ -1,20 +1,11 @@
 -- Ubicación en Studio: ReplicatedStorage > TopbarConfig (ModuleScript)
---
--- Identidad + layout de CADA ícono del topbar. TopbarController llama
--- `TopbarConfig.apply(icon, "Nombre")`: acá va lo que DEFINE al ícono (arte, texto,
--- orden, lado), el comportamiento queda en TopbarController.
---
--- Campos: `align` "Left"/"Right", `order` ascendente dentro de cada lado, `name`
--- (id interno + de-dup), e `image`/`caption`/`label` opcionales.
---
--- Traído de UBG sin íconos propios: sumá acá el primer ícono de BloxDrivers
--- (ej. `Garage = { align = "Left", order = 1, name = "Garage", image = "rbxassetid://...", caption = "Garage" }`).
+-- Arte, texto, orden y lado de cada ícono del topbar; el comportamiento va en TopbarController.
+-- Campos: `align` "Left"/"Right", `order`, `name`, e `image`/`caption`/`label` opcionales.
 local TopbarConfig = {}
 
 TopbarConfig.Icons = {}
 
--- Casillas de un dropdown tipo "Opciones" (un arte por estado). Vacío hasta que
--- BloxDrivers tenga su propio menú de opciones — pegá tus IDs acá.
+-- Arte por estado de las casillas de un dropdown tipo "Opciones".
 TopbarConfig.ToggleImages = {
 	Selected = "",
 	Deselected = "",
@@ -33,8 +24,7 @@ function TopbarConfig.apply(icon, name: string)
 	if cfg.image then
 		icon:setImage(cfg.image)
 	end
-	-- Solo en Viewing y Selected: el tema de TopbarPlus ya deja el texto vacío en
-	-- Deselected, no hay que limpiarlo a mano.
+	-- El tema de TopbarPlus ya vacía el texto en Deselected.
 	if cfg.label then
 		icon:setLabel(cfg.label, "Viewing")
 		icon:setLabel(cfg.label, "Selected")

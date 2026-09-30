@@ -1,14 +1,5 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > Signal (ModuleScript)
---
--- Señal mínima estilo RBXScriptSignal (Connect / Once / Fire / Disconnect) para que
--- los módulos se avisen cosas entre sí sin BindableEvents (que copian las tablas y
--- no dejan pasar funciones). Cada listener corre en su propio hilo: si uno falla,
--- los demás igual se ejecutan.
---
---   local changed = Signal.new()
---   local conn = changed:Connect(function(value) print(value) end)
---   changed:Fire(10)
---   conn:Disconnect()
+-- Señal estilo RBXScriptSignal. No BindableEvent: ese copia las tablas y no pasa funciones.
 local Signal = {}
 Signal.__index = Signal
 
@@ -60,8 +51,9 @@ function Signal:Once(callback: (...any) -> ()): Connection
 	return connection
 end
 
+-- Cada listener en su hilo: si uno falla, los demás corren igual.
 function Signal:Fire(...: any)
-	-- Se itera una copia: un listener que se desconecta durante el Fire no corre el índice.
+	-- Copia: un listener que se desconecta durante el Fire no corre el índice.
 	for _, listener in table.clone(self._listeners) do
 		if listener.Connected then
 			task.spawn(listener.callback, ...)

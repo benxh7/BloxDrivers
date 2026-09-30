@@ -1,19 +1,16 @@
--- Prendé/apagá acá los prints/warns/mensajes de debug de todo el proyecto
--- (servidor y cliente comparten este módulo).
+-- Ubicación en Studio: ReplicatedStorage > DebugConfig (ModuleScript)
+-- Interruptor de todos los prints/warns del proyecto (servidor y cliente).
 local RunService = game:GetService("RunService")
 
 local DebugConfig = {}
 
 DebugConfig.ENABLED = true
 
--- Cheats de debug (botones del topbar, etc.). Solo en Studio,
--- NUNCA en el juego publicado, aunque ENABLED quede en true por descuido.
--- Gatea el cliente (no se crean los botones) Y el servidor (los handlers de los
--- remotes) — sin el gate del servidor, un exploiter podría dispararlos igual: el
--- remote existe aunque el botón no esté en su pantalla.
+-- Gatea los cheats en el cliente Y en los handlers del servidor: el remote existe en
+-- producción aunque el botón no, y un exploiter podría dispararlo igual.
 DebugConfig.CHEATS_ENABLED = RunService:IsStudio()
 
--- Subir a mano en cada release, para saber qué versión corre el juego.
+-- Subir a mano en cada release.
 DebugConfig.VERSION = "0.1.0"
 DebugConfig.AUTHOR = ""
 
@@ -29,8 +26,7 @@ function DebugConfig.warn(...: any)
 	end
 end
 
--- Corre una vez por VM: el banner aparece en la consola de cada cliente y
--- del servidor por separado.
+-- Corre una vez por VM: sale en la consola de cada cliente y del servidor.
 if DebugConfig.ENABLED then
 	print("")
 	print(" BloxDrivers")

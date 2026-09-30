@@ -1,11 +1,5 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Controllers > HUDController (ModuleScript)
---
--- HUD siempre visible (StarterGui > HUD, DisplayOrder 0). NO se registra en UIManager:
--- solo conecta sus botones a UIManager.Toggle según la tabla BUTTONS.
---
--- Agregar un botón = crearlo en Studio dentro del HUD y sumar una línea a BUTTONS.
--- Si el botón todavía no existe se ignora; si la ventana todavía no existe, UIManager
--- avisa por consola al clickearlo.
+-- HUD siempre visible: NO se registra en UIManager, solo conecta sus botones con BUTTONS.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local UIManager = require(script.Parent:WaitForChild("UIManager"))
@@ -16,13 +10,13 @@ local HUDController = {}
 
 local GUI_NAME = "HUD"
 
--- Nombre del botón en el HUD (se busca en cualquier nivel) -> nombre de la ventana en UIManager.
+-- Botón del HUD (se busca en cualquier nivel) -> ventana de UIManager. Si no existe, se ignora.
 local BUTTONS: { [string]: string } = {
 	ShopButton = "Shop",
 	InventoryButton = "Inventory",
 }
 
--- Hover de los botones del HUD: crece y gira su hijo `Icon` hacia la derecha.
+-- Hover: cuánto crece el botón y cuántos grados gira su `Icon`.
 local HOVER_SCALE = 1.1
 local HOVER_ROTATION = 14
 
@@ -38,7 +32,6 @@ function HUDController.Init()
 			UIEffects.bindButton(button, function()
 				UIManager.Toggle(windowName)
 			end)
-			-- Con hover: crece, gira el `Icon` y aparece el brillo `Glow` (si el botón lo tiene).
 			local icon = button:FindFirstChild("Icon")
 			local glow = button:FindFirstChild("Glow")
 			UIEffects.bindHover(button, {

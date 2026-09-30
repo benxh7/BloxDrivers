@@ -1,3 +1,5 @@
+-- Ubicación en Studio: ReplicatedFirst > LoadingScreen > MenuCamera (ModuleScript)
+-- Cámara del menú de carga: orbita sola un punto fijo del lobby.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -6,9 +8,6 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage:WaitForChild("MenuCameraConfig"))
 
--- Cámara del menú de carga: da vueltas solas alrededor de un punto fijo del lobby.
--- Propia y aparte de FreeOrbitCamera (esa orbita a un Player y la maneja el mouse).
--- Una sola sesión activa por cliente.
 local MenuCamera = {}
 
 local localPlayer = Players.LocalPlayer
@@ -27,8 +26,7 @@ local function resolve(path: { string }): BasePart?
 	return current:IsA("BasePart") and current or nil
 end
 
--- Espera a que el lobby replique. Bloquea hasta WaitForTargetSeconds, así que
--- quien la llame debería hacerlo en su propio task.spawn. nil = se acabó el tiempo.
+-- Bloquea hasta WaitForTargetSeconds esperando que el lobby replique.
 local function waitForTarget(): BasePart?
 	local deadline = os.clock() + Config.WaitForTargetSeconds
 	repeat
@@ -39,8 +37,7 @@ local function waitForTarget(): BasePart?
 	return nil
 end
 
--- CameraSubject es propiedad de Camera, no de Humanoid: al volver a Custom hay
--- que reasignarlo a mano.
+-- Al volver a Custom, CameraSubject no se restaura solo.
 local function setCameraSubject(camera: Camera, character: Model): boolean
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return false end
@@ -52,8 +49,7 @@ function MenuCamera.isActive(): boolean
 	return active
 end
 
--- Arranca la órbita. Devuelve false si el lobby nunca apareció o no hay cámara:
--- en ese caso el menú se queda con su fondo en vez de mostrar el vacío.
+-- false si el lobby nunca apareció: el menú se queda con su fondo en vez del vacío.
 function MenuCamera.start(): boolean
 	MenuCamera.stop()
 
@@ -70,8 +66,7 @@ function MenuCamera.start(): boolean
 
 	local yaw = math.rad(Config.StartAngle)
 	local speed = math.pi * 2 / math.max(Config.OrbitSeconds, 0.1)
-	-- nil el primer frame: se arranca YA en el destino, si no la cámara barre
-	-- desde donde la haya dejado el motor.
+	-- nil el primer frame: arranca en el destino y no barre desde donde la dejó el motor.
 	local current: CFrame? = nil
 
 	renderConn = RunService.RenderStepped:Connect(function(deltaTime)
@@ -84,10 +79,8 @@ function MenuCamera.start(): boolean
 			center + Vector3.new(0, Config.LookHeight, 0)
 		)
 
-		-- Parallax: distancia del mouse al centro de la pantalla por un factor, con
-		-- tope. Se aplica en el espacio de la CÁMARA, no del mundo — al orbitar, el
-		-- eje X del mundo deja de ser "la derecha de la pantalla". Solo con mouse:
-		-- sin él GetMouseLocation devuelve (0,0) y el offset quedaría clavado al tope.
+		-- En el espacio de la cámara (al orbitar, la X del mundo no es "la derecha"). Solo
+		-- con mouse: sin él GetMouseLocation da (0,0) y quedaría clavado al tope.
 		if UserInputService.MouseEnabled then
 			local viewport = camera.ViewportSize
 			local mouse = UserInputService:GetMouseLocation()
@@ -96,8 +89,7 @@ function MenuCamera.start(): boolean
 			goal *= CFrame.new(parallaxX, parallaxY, 0)
 		end
 
-		-- Lerp por frame como el original, pero corregido por deltaTime: sin esto el
-		-- suavizado es más rápido cuantos más fps tenga el jugador.
+		-- Corregido por deltaTime: si no, suaviza más rápido con más fps.
 		local alpha = 1 - (1 - Config.Smoothing) ^ (deltaTime * 60)
 		current = if current then current:Lerp(goal, alpha) else goal
 		camera.CFrame = current :: CFrame
@@ -126,7 +118,6 @@ function MenuCamera.stop()
 
 	if localPlayer.Character and setCameraSubject(camera, localPlayer.Character) then return end
 
-	-- Todavía sin personaje: reenganchar en el próximo CharacterAdded.
 	local connection: RBXScriptConnection
 	connection = localPlayer.CharacterAdded:Connect(function(character)
 		connection:Disconnect()

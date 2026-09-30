@@ -1,12 +1,6 @@
 -- Ubicación en Studio: ServerScriptService > Services > Npc > NPCBillboardService (ModuleScript)
---
--- Cartel sobre la cabeza del NPC: nombre, una rayita y el subtítulo. Lo arma el
--- SERVIDOR una sola vez porque el NPC no se respawnea — un cartel por cliente sería
--- el mismo trabajo repetido y nada acá depende de quién mira.
---
--- Nota: el BillboardGui usa píxeles a propósito (NPCConfig.Billboard). Un billboard
--- en Offset mantiene el mismo tamaño en pantalla a cualquier distancia; en Scale se
--- achicaría con la distancia como un objeto 3D.
+-- Cartel del NPC, armado una vez en el servidor: el NPC no respawnea y nada depende de
+-- quién mira. En px a propósito: en Scale se achicaría con la distancia.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local NPCConfig = require(ReplicatedStorage:WaitForChild("NPCConfig"))
@@ -28,7 +22,7 @@ local function textLabel(name: string, text: string, size: number, color: Color3
 	label.TextSize = size
 	label.TextColor3 = color
 	label.LayoutOrder = order
-	-- El TextStroke viejo se SUMA al UIStroke y engorda el borde: se apaga.
+	-- El TextStroke viejo se suma al UIStroke y engorda el borde.
 	label.TextStrokeTransparency = 1
 
 	local stroke = Instance.new("UIStroke")
@@ -53,13 +47,13 @@ local function buildBillboard(model: Model, settings)
 
 	local style = NPCConfig.Billboard
 
-	-- Se arma entero ANTES de parentarlo: una sola replicación en vez de una por hijo.
+	-- Entero antes de parentarlo: una sola replicación en vez de una por hijo.
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = BILLBOARD_NAME
 	billboard.Size = UDim2.fromOffset(style.WidthPixels, style.HeightPixels)
 	billboard.StudsOffset = Vector3.new(0, settings.BillboardHeight, 0)
 	billboard.MaxDistance = style.MaxDistance
-	-- false = se tapa detrás de las paredes, igual que los nombres de los jugadores.
+	-- false = se tapa detrás de las paredes, como los nombres de los jugadores.
 	billboard.AlwaysOnTop = false
 
 	local root = Instance.new("Frame")
@@ -85,8 +79,7 @@ local function buildBillboard(model: Model, settings)
 	line.LayoutOrder = 2
 	line.Parent = root
 
-	-- Sin subtítulo NO se crea la label: una label vacía igual ocuparía su alto en el
-	-- UIListLayout y dejaría el cartel descentrado.
+	-- Una label vacía igual ocuparía su alto en el UIListLayout y descentraría el cartel.
 	if settings.Subtitle ~= "" then
 		textLabel("Subtitle", settings.Subtitle, style.SubtitleSize, style.SubtitleColor, 3).Parent = root
 	end
@@ -94,8 +87,7 @@ local function buildBillboard(model: Model, settings)
 	billboard.Parent = head
 end
 
--- El cartel nativo del Humanoid sobra: nuestro billboard lo reemplaza, y si no
--- quedan los dos encimados. `None` apaga el nombre Y la barra de vida de una.
+-- Si no, quedan el cartel nativo y el nuestro encimados. `None` apaga nombre y barra de vida.
 local function hideNativeName(npc: Model)
 	local humanoid = npc:FindFirstChildOfClass("Humanoid")
 	if humanoid then

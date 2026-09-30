@@ -1,13 +1,12 @@
+-- Ubicación en Studio: ReplicatedFirst > LoadingScreen > AnimationPreloader (ModuleScript)
 local Players = game:GetService("Players")
 
--- `PreloadAsync` reporta OK sobre un AnimationId sin bajar nada: la única forma de
--- cachear una animación es pasarla por LoadAnimation en un Animator de verdad.
+-- PreloadAsync da OK sobre un AnimationId sin bajar nada: la única forma de cachear
+-- una animación es un LoadAnimation en un Animator real.
 local AnimationPreloader = {}
 
 local localPlayer = Players.LocalPlayer
 
--- Corremos desde el menú, así que el personaje ya debería existir; igual se espera
--- por si la carga fue más rápida que el spawn.
 local ANIMATOR_TIMEOUT = 20
 
 local function waitForAnimator(): Animator?
@@ -22,14 +21,12 @@ local function waitForAnimator(): Animator?
 	return nil
 end
 
--- Carga cada animación una vez para que quede en el caché del cliente. BLOQUEA
--- hasta terminar: llamar desde una corrutina. Devuelve cuántas se cargaron.
+-- BLOQUEA hasta terminar (llamar desde una corrutina). Devuelve cuántas se cargaron.
 function AnimationPreloader.preload(ids: { string }, onProcessed: (() -> ())?): number
 	if #ids == 0 then return 0 end
 
 	local animator = waitForAnimator()
 	if not animator then
-		-- Sin Animator no hay forma de cachearlas; el que llama sigue igual.
 		if onProcessed then
 			for _ = 1, #ids do
 				onProcessed()
@@ -43,12 +40,12 @@ function AnimationPreloader.preload(ids: { string }, onProcessed: (() -> ())?): 
 		local animation = Instance.new("Animation")
 		animation.AnimationId = id
 
-		-- En pcall: un ID mal escrito o de otro dueño no debe cortar la tanda.
+		-- Un ID mal escrito o de otro dueño no debe cortar la tanda.
 		local ok, track = pcall(function()
 			return animator:LoadAnimation(animation)
 		end)
 		if ok and track then
-			-- El track se descarta, pero el ASSET ya quedó cacheado para la sesión.
+			-- El track se descarta; el asset queda cacheado igual.
 			track:Destroy()
 			loaded += 1
 		end

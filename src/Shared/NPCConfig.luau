@@ -1,28 +1,22 @@
+-- Ubicación en Studio: ReplicatedStorage > NPCConfig (ModuleScript)
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local SimulatorCircleConfig = require(ReplicatedStorage.SimulatorCircleConfig)
 local DebugConfig = require(ReplicatedStorage.DebugConfig)
 
---[[ NPCs del lobby. Cada uno es un Model con Humanoid que vive DENTRO de su aro
-	(SimulatorCircles/<Aro>/<NPC>): moverlo se lleva al NPC con él, y el aro pasa a ser
-	la zona, así que no hay radio que emparejar a mano contra el dibujo.
-
-	Cada NPC lleva un ModuleScript `Config` con lo SUYO (nombre, subtítulo, su idle);
-	el formato del cartel es global y vive en NPCConfig.Billboard. ]]
+-- NPC = Model con Humanoid dentro de su aro (SimulatorCircles/<Aro>/<NPC>): el aro es su
+-- zona. Lo propio de cada uno va en un ModuleScript hijo; acá los defaults y lo global.
 local NPCConfig = {}
 
--- Nombre del ModuleScript que cada NPC lleva adentro con lo suyo. Es OTRA cosa que
--- este módulo: acá viven los defaults, allá los valores de ese NPC.
+-- Nombre del ModuleScript hijo de cada NPC (no confundir con este módulo).
 NPCConfig.ConfigName = "NPCConfig"
 
 local FOLDER_WAIT_TIMEOUT = 30
--- Un Model replica antes que sus hijos: el Humanoid puede tardar en aparecer y sin
--- esperarlo un NPC que llega tarde no se detectaría nunca.
+-- Un Model replica antes que sus hijos: sin esperar, un Humanoid tardío no se detectaría.
 local HUMANOID_WAIT_TIMEOUT = 10
 
--- Lo que puede declarar el Config de cada NPC. Una clave que no esté acá se ignora,
--- así un typo en el Config de un NPC no se cuela como un ajuste inventado.
+-- Una clave que no esté acá se ignora: un typo no se cuela como ajuste inventado.
 NPCConfig.Defaults = {
 	-- Vacío = usa el nombre del Model.
 	Title = "",
@@ -31,32 +25,26 @@ NPCConfig.Defaults = {
 	-- "" = el NPC se queda quieto, sin idle.
 	IdleAnimation = "",
 
-	-- Radio en studs de la zona que le abre la GUI al jugador. 0 = sale del aro que lo
-	-- contiene, que es lo que se quiere casi siempre: la zona coincide con el dibujo.
+	-- Radio en studs de la zona. 0 = el del aro (casi siempre lo que se quiere).
 	ZoneRadius = 0,
-	-- Ventana de UIManager que se abre al entrar al aro (ej. "Shop"), la misma que
-	-- registra su controller. "" = este NPC no abre nada.
+	-- Ventana de UIManager que abre al entrar al aro (ej. "Shop"). "" = ninguna.
 	Gui = "",
 
-	-- Alto del cartel sobre la cabeza.
+	-- Studs del cartel sobre la cabeza.
 	BillboardHeight = 3,
 }
 
---[[ Seguimiento con la mirada. General para TODOS los NPCs, como el cartel.
-	Cada cliente los apunta a SU propio personaje y eso no replica, así que a vos te
-	miran a vos y al de al lado lo miran a él, cada uno en su pantalla. ]]
+-- Seguimiento con la mirada, común a todos los NPCs.
 NPCConfig.Look = {
-	-- Distancia en studs a la que te empieza a seguir.
+	-- Studs a los que empieza a seguirte.
 	Radius = 25,
-	-- Qué tan rápido alcanza el ángulo (fracción por segundo). Más alto = más seco.
+	-- Más alto = gira más seco.
 	TurnSpeed = 6,
-	-- Tope de giro en grados hacia cada lado desde su pose original. 180 = se da
-	-- vuelta entero; bajalo si el NPC está contra una pared y no querés que se dé
-	-- vuelta hacia ella.
+	-- Grados máximos hacia cada lado. Bajalo si el NPC está contra una pared.
 	MaxAngleDegrees = 180,
 }
 
--- El LOOK del cartel es global a propósito: se toca una vez y cambian todos los NPCs.
+-- Estilo del cartel, común a todos los NPCs.
 NPCConfig.Billboard = {
 	WidthPixels = 260,
 	HeightPixels = 74,
@@ -69,7 +57,6 @@ NPCConfig.Billboard = {
 	StrokeColor = Color3.fromRGB(0, 0, 0),
 	StrokeThickness = 2.5,
 
-	-- La rayita debajo del nombre.
 	LineColor = Color3.fromRGB(255, 255, 255),
 	LineThicknessPixels = 2,
 	LineWidthScale = 0.85,
@@ -80,8 +67,7 @@ function NPCConfig.get(model: Model)
 
 	local module = model:FindFirstChild(NPCConfig.ConfigName)
 	if module and module:IsA("ModuleScript") then
-		-- En pcall: un Config roto tiene que costar UN npc con los defaults, nunca
-		-- tumbar al resto.
+		-- Un Config roto deja a ESE NPC con los defaults, sin tumbar al resto.
 		local ok, custom = pcall(require, module)
 		if ok and typeof(custom) == "table" then
 			for key, value in custom do
@@ -100,9 +86,7 @@ function NPCConfig.get(model: Model)
 		settings.Title = model.Name
 	end
 
-	-- Sin un ID numérico adentro (vacío, un placeholder de ejemplo, o 0) el NPC
-	-- simplemente NO tiene idle. Se normaliza acá para que no llegue como un ID roto y
-	-- termine avisado como error de carga, que es otra cosa.
+	-- Sin ID numérico (vacío, placeholder o 0) = sin idle, y no un error de carga.
 	local animationId = tonumber(settings.IdleAnimation:match("%d+") or "")
 	if not animationId or animationId <= 0 then
 		settings.IdleAnimation = ""
@@ -111,9 +95,7 @@ function NPCConfig.get(model: Model)
 	return settings
 end
 
--- El descubrimiento vive acá y no en cada consumidor: los dos servicios y el controller
--- de zonas lo comparten, así el recorrido se escribe una sola vez.
--- `onAdded(npc, ring)` — el aro va aparte porque de él sale el radio de la zona.
+-- `onAdded(npc, ring)`: el aro va aparte porque de él sale el radio de la zona.
 function NPCConfig.observe(onAdded: (Model, Model) -> (), onRemoved: ((Model) -> ())?)
 	task.spawn(function()
 		local folderName = SimulatorCircleConfig.FolderName
@@ -129,7 +111,6 @@ function NPCConfig.observe(onAdded: (Model, Model) -> (), onRemoved: ((Model) ->
 			local function handleChild(child: Instance)
 				if not child:IsA("Model") then return end
 				task.spawn(function()
-					-- Lo que distingue al NPC del resto del aro es tener Humanoid.
 					if not child:WaitForChild("Humanoid", HUMANOID_WAIT_TIMEOUT) then return end
 					onAdded(child, ring)
 				end)

@@ -1,11 +1,6 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Controllers > NPCZoneController (ModuleScript)
---
--- Pisar el aro de un NPC abre su ventana (UIManager.Open), salir la cierra. El centro
--- y el radio salen de la GEOMETRÍA del aro que contiene al NPC (`ZoneRadius = 0`): la
--- zona coincide sola con lo que se ve dibujado en el piso.
---
--- 100% del cliente: abrir una ventana propia no es una acción de juego, no hay nada
--- que validar en el servidor y no hace falta ningún remote.
+-- Pisar el aro de un NPC abre su ventana y salir la cierra. Solo cliente: abrir una
+-- ventana propia no es una acción de juego, no hay nada que validar.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -15,7 +10,6 @@ local SimulatorCircleConfig = require(ReplicatedStorage:WaitForChild("SimulatorC
 
 local NPCZoneController = {}
 
--- No hace falta por frame: entrar a una zona no es un evento de 1 frame.
 local SAMPLE_INTERVAL = 0.15
 local FALLBACK_RADIUS = 12
 
@@ -36,8 +30,7 @@ local function setInside(zone: Zone, inside: boolean)
 	if inside then
 		UIManager.Open(zone.window)
 	else
-		-- Close solo actúa si ESA ventana sigue abierta: si el jugador ya abrió otra, no
-		-- se la cierra.
+		-- Close solo actúa si ESA ventana sigue abierta: no cierra otra que haya abierto.
 		UIManager.Close(zone.window)
 	end
 end
@@ -51,7 +44,7 @@ local function onNPCAdded(npc: Model, ring: Model)
 	zones[npc] = {
 		x = center.X,
 		z = center.Y,
-		-- El aro manda salvo que el Config pida un radio propio.
+		-- Sale de la geometría del aro, salvo que el Config pida un radio propio.
 		radius = if settings.ZoneRadius > 0
 			then settings.ZoneRadius
 			else (if bounds then bounds.radius else FALLBACK_RADIUS),
@@ -63,8 +56,8 @@ end
 local function sample()
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	-- En carrera no se abre nada solo. Se sigue recorriendo igual para que al volver
-	-- al lobby las zonas queden en "afuera".
+	-- En carrera no se abre nada, pero se sigue recorriendo: al volver al lobby las
+	-- zonas quedan en "afuera".
 	local canEnter = root ~= nil and not player:GetAttribute("InRound")
 
 	for npc, zone in zones do
@@ -76,8 +69,7 @@ local function sample()
 		local inside = false
 		if canEnter then
 			local position = (root :: BasePart).Position
-			-- Solo en XZ: es un círculo en el piso; con la distancia real, un balcón
-			-- justo encima del aro contaría como estar adentro.
+			-- Solo XZ: con la distancia 3D, un balcón encima del aro contaría como adentro.
 			inside = Vector2.new(position.X - zone.x, position.Z - zone.z).Magnitude <= zone.radius
 		end
 

@@ -1,18 +1,6 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Controllers > UIManager (ModuleScript)
---
--- Maneja TODAS las ventanas del juego (Shop, Inventory, ...). Regla: una sola ventana
--- abierta a la vez; abrir una cierra la anterior. Los controllers registran el Frame
--- `Main` de su GUI y nunca tocan `.Visible` a mano.
---
---   UIManager.Register("Shop", shopGui.Main)
---   UIManager.Open("Shop") / Close("Shop") / Toggle("Shop") / CloseAll() / IsOpen("Shop")
---   UIManager.OnOpened("Shop", function() scroll.CanvasPosition = Vector2.zero end)
---
--- NO se registran acá: el HUD (siempre visible) ni los popups/overlays que maneja el
--- servidor (ej. VotingMapGui), que tienen su propio ciclo.
---
--- Convención: si el Main tiene un botón llamado `CloseButton` (en cualquier nivel),
--- se conecta solo a Close(name).
+-- Una sola ventana abierta a la vez. No se registran el HUD ni los popups del servidor.
+-- Un `CloseButton` dentro del Main (en cualquier nivel) se conecta solo a Close(name).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -22,12 +10,10 @@ local Signal = require(Utils:WaitForChild("Signal"))
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
 export type WindowOptions = {
-	-- false = sin popIn/popOut (la ventana solo se muestra/oculta). Default true.
+	-- false = sin popIn/popOut. Default true.
 	Animate: boolean?,
-	-- Escala desde la que entra y hacia la que sale (default UIEffects.WindowHiddenScale).
-	-- Ej. 0.1 = se abre chiquita desde el centro hasta su tamaño normal.
+	-- Escala desde la que entra y hacia la que sale (0.1 = se abre desde el centro).
 	HiddenScale: number?,
-	-- Segundos que tarda en abrirse (default UIEffects.WindowOpenDuration).
 	OpenDuration: number?,
 }
 
@@ -41,7 +27,7 @@ type Window = {
 
 local UIManager = {}
 
--- Se disparan con el nombre de la ventana. Preferí OnOpened/OnClosed (filtran por nombre).
+-- Preferí OnOpened/OnClosed, que filtran por nombre.
 UIManager.Opened = Signal.new()
 UIManager.Closed = Signal.new()
 
@@ -63,10 +49,8 @@ function UIManager.Init()
 	getPlayerGui()
 end
 
--- Espera una ScreenGui de StarterGui ya clonada en PlayerGui. Pasado el timeout avisa
--- (casi siempre: el nombre no coincide con el de Studio) pero SIGUE esperando: las
--- ScreenGuis recién se clonan cuando aparece el personaje, y en un arranque lento eso
--- tarda más que el timeout. Cada Init corre en su hilo, así que esperar no frena a nadie.
+-- Pasado el timeout avisa pero SIGUE esperando: las ScreenGuis se clonan recién cuando
+-- aparece el personaje, y en un arranque lento eso tarda más.
 function UIManager.WaitForGui(guiName: string, timeout: number?): ScreenGui?
 	local container = getPlayerGui()
 	local gui = container:WaitForChild(guiName, timeout or GUI_WAIT_TIMEOUT)
@@ -106,7 +90,6 @@ function UIManager.Register(name: string, mainFrame: GuiObject, options: WindowO
 	end
 
 	windows[name] = window
-	-- Si justo estaba abierta (re-registro), se respeta; si no, arranca oculta.
 	mainFrame.Visible = current == name
 end
 
@@ -126,7 +109,6 @@ local function hide(window: Window)
 	end
 end
 
--- Abre la ventana y cierra la que estuviera abierta. Devuelve false si no existe.
 function UIManager.Open(name: string): boolean
 	local window = windows[name]
 	if not window then
@@ -177,12 +159,10 @@ function UIManager.IsOpen(name: string): boolean
 	return current == name
 end
 
--- Nombre de la ventana abierta ahora (nil si no hay ninguna).
 function UIManager.GetOpen(): string?
 	return current
 end
 
--- `callback()` corre cada vez que se abre `name`. Devuelve la conexión (Disconnect).
 function UIManager.OnOpened(name: string, callback: () -> ())
 	return UIManager.Opened:Connect(function(opened: string)
 		if opened == name then

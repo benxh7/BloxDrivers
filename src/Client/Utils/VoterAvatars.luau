@@ -1,9 +1,6 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > VoterAvatars (ModuleScript)
---
--- Fotitos de los votantes sobre la imagen de un mapa: cache de thumbnails y reparto de
--- posiciones sin superponerse. COMPARTIDO entre todas las vistas de la votación
--- (VotingMapController, MapVoteBoard) para que el mismo votante caiga en el mismo
--- lugar en todas y la thumbnail (llamada web) se pida una sola vez.
+-- Fotitos de votantes, compartidas por todas las vistas de la votación: mismo lugar en
+-- todas y una sola llamada web por thumbnail.
 local Players = game:GetService("Players")
 
 local VoterAvatars = {}
@@ -15,13 +12,10 @@ VoterAvatars.MinX, VoterAvatars.MaxX = 0.15, 0.85
 VoterAvatars.MinY, VoterAvatars.MaxY = 0.2, 0.8
 
 local thumbCache: { [number]: string } = {}
--- mapId -> userId -> posición (Scale). Se recuerda para que las fotitos de quien no
--- cambió el voto no salten de lugar en cada actualización.
+-- mapId -> userId -> posición. Se recuerda: quien no cambió el voto no salta de lugar.
 local placed: { [string]: { [number]: Vector2 } } = {}
 local rng = Random.new()
 
--- Pone la thumbnail del usuario en `image`. La primera vez es asíncrona (pcall: es
--- una llamada web que puede fallar); después sale del cache.
 function VoterAvatars.applyThumbnail(image: ImageLabel, userId: number)
 	local cached = thumbCache[userId]
 	if cached then
@@ -45,7 +39,7 @@ function VoterAvatars.applyThumbnail(image: ImageLabel, userId: number)
 	end)
 end
 
--- Primer candidato que no choque con otra fotito; si está lleno, el que menos se pise.
+-- Si no hay lugar libre, devuelve el que menos se pisa.
 local function pickFreeSpot(taken: { [number]: Vector2 }): Vector2
 	local best = Vector2.new(0.5, 0.5)
 	local bestDist = -1
@@ -69,8 +63,7 @@ local function pickFreeSpot(taken: { [number]: Vector2 }): Vector2
 	return best
 end
 
--- Sincroniza las posiciones con el estado nuevo: saca a quien ya no vota ese mapa y
--- ubica a los nuevos. Llamar UNA vez por estado, no por vista.
+-- Llamar UNA vez por estado, no por vista.
 function VoterAvatars.updatePositions(mapIds: { string }, state: { [string]: { number } })
 	for _, mapId in mapIds do
 		local voters = state[mapId] or {}
