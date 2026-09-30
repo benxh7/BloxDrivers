@@ -42,10 +42,12 @@ export type Item = {
 	-- Dibujo centrado encima del fondo (ícono del item). `IconLayout` lo ubica en Scale.
 	Icon: string?,
 	IconLayout: IconLayout?,
-	-- Brillo exterior + anillo de color alrededor del borde negro. nil = solo borde negro.
+	-- Color del brillo exterior (y de la línea clara interior). Todas las tarjetas lo
+	-- llevan; nil = solo borde negro.
 	Glow: Color3?,
-	-- Grosor del anillo sólido de color (default ShopConfig.GlowThickness = 0, solo brillo).
-	GlowThickness: number?,
+	-- Anillo sólido de color entre el borde negro y el brillo (px a 1080). Default
+	-- Style.RingThickness = 0: solo brillo. Lo usan el bundle y el pase.
+	RingThickness: number?,
 	-- Color del borde interior (default negro).
 	Outline: Color3?,
 	TitleColor: Color3?,
@@ -76,8 +78,9 @@ export type Row = {
 }
 
 -- ─── Assets de la GUI (pegá tus IDs acá) ────────────────────────────────────────
+-- El símbolo de Robux del precio NO es una imagen: es el ícono de texto de Roblox
+-- (utf8.char(0xE002)) dentro del PriceLabel, así toma el mismo borde que los números.
 ShopConfig.Icons = {
-	Robux = "rbxassetid://139018648263587",
 	Gift = "rbxassetid://114937842017271",
 	Gem = "rbxassetid://123458803098584",
 }
@@ -90,15 +93,76 @@ local ART = {
 	PassBackground = "rbxassetid://104433970768289",
 }
 
--- Colores (arriba, abajo) del degradé del botón según su estado.
+-- Colores (arriba, abajo) del degradé de cada botón. Buy / View / Owned son los
+-- estados del botón de compra; Gift y Gem, los botones cuadrados.
 ShopConfig.ButtonColors = {
-	Buy = { Color3.fromRGB(170, 255, 60), Color3.fromRGB(60, 205, 40) },
-	View = { Color3.fromRGB(140, 228, 255), Color3.fromRGB(45, 160, 230) },
-	Owned = { Color3.fromRGB(190, 190, 200), Color3.fromRGB(120, 120, 135) },
+	Buy = { Color3.fromRGB(105, 225, 25), Color3.fromRGB(40, 195, 10) },
+	View = { Color3.fromRGB(110, 205, 255), Color3.fromRGB(40, 150, 230) },
+	Owned = { Color3.fromRGB(175, 175, 188), Color3.fromRGB(115, 115, 130) },
+	Gift = { Color3.fromRGB(45, 55, 240), Color3.fromRGB(215, 85, 255) },
+	Gem = { Color3.fromRGB(35, 95, 250), Color3.fromRGB(40, 175, 255) },
 }
 
--- Grosor por defecto del anillo de color. 0 = sin anillo, solo el brillo difuminado.
-ShopConfig.GlowThickness = 0
+-- Borde oscuro, aro claro interior y texto del precio de TODOS los botones de las
+-- tarjetas (px a 1080 de alto).
+ShopConfig.ButtonStyle = {
+	-- Esquinas de los botones (Scale del lado más corto).
+	CornerRadius = 0.05,
+	OutlineColor = Color3.fromRGB(18, 18, 32),
+	OutlineThickness = 3.5,
+	-- Aro claro pegado por dentro del borde negro: mismo degradé del botón aclarado
+	-- hacia el blanco (RimLighten 0..1). RimThickness = grosor en px.
+	RimThickness = 3,
+	RimLighten = 0.45,
+	PriceFont = Font.new("rbxasset://fonts/families/FredokaOne.json"),
+	PriceStrokeColor = Color3.fromRGB(18, 18, 32),
+	PriceStrokeThickness = 3,
+	-- Separación entre el botón de regalo y el de compra (fracción del ancho de Actions).
+	Gap = 0.06,
+}
+
+-- ─── Estilo de las tarjetas (todo lo visual que se ajusta a mano está acá) ─────────
+-- Los tamaños en px están pensados para una pantalla de 1080 px de alto; en pantallas
+-- más chicas ShopController los achica en proporción.
+ShopConfig.Style = {
+	-- Radio de las esquinas de TODAS las capas de la tarjeta (Scale del lado más corto).
+	CornerRadius = 0.12,
+	-- Grosor del borde negro (px).
+	OutlineThickness = 6,
+	-- Brillo exterior difuminado (como una sombra de color), con la forma exacta de la
+	-- tarjeta: esquinas redondas como las suyas.
+	--   Spread = hasta dónde llega por fuera del borde (px); ahí ya es invisible.
+	--   Opacity = intensidad pegado al borde (0..1).
+	--   Curve = cómo se esfuma: 1 = parejo, 2 = fuerte en el borde y cola larga suave.
+	--   Layers = pasos del degradado (1 por px de Spread = sin bandas).
+	Glow = { Spread = 22, Opacity = 0.45, Curve = 2, Layers = 22 },
+	-- Anillo sólido por defecto (0 = ninguno). Cada item puede pedir el suyo con RingThickness.
+	RingThickness = 0,
+	-- Línea clara pegada al borde por dentro: cuánto se aclara el color del brillo (0..1).
+	InnerLineLighten = 0.45,
+	-- Tamaño máximo del texto de la descripción, como fracción del alto de la tarjeta.
+	DescriptionTextSize = 0.115,
+	-- Espaciado de la lista, como fracción de su ancho (CardGap: entre tarjetas de una fila).
+	-- SidePadding / EdgePadding dejan lugar para que el brillo no se corte contra el borde.
+	Layout = { CardGap = 0.055, RowGap = 0.065, SidePadding = 0.06, EdgePadding = 0.055 },
+	-- Hover: Scale = cuánto crece, Rotation = grados hacia la derecha, Duration = segundos.
+	-- Las tarjetas destacadas (Featured) y los pases (Banner) no tienen hover.
+	Hover = {
+		Card = { Scale = 1.03, Duration = 0.3 },
+		Button = { Scale = 1.07, Rotation = 3, Duration = 0.3 },
+	},
+	-- Desenfoque del mundo mientras la tienda está abierta.
+	Blur = { Size = 16, Duration = 0.2 },
+	-- Apertura de la ventana: arranca en FromScale (chiquita, desde el centro) y crece
+	-- hasta su tamaño normal en Duration segundos.
+	Open = { FromScale = 0.1, Duration = 0.35 },
+}
+
+-- Sonidos que suenan juntos al abrir la tienda.
+ShopConfig.Sounds = {
+	Open = { "rbxassetid://127488139302452", "rbxassetid://98891178613563" },
+	Volume = 0.5,
+}
 
 -- Botón de regalo. El flujo de regalar todavía no existe: con true se muestra y avisa
 -- por consola al tocarlo.
@@ -118,7 +182,7 @@ ShopConfig.Items = {
 		Icon = ART.Coins,
 		IconLayout = { Position = UDim2.fromScale(0.28, 0.6), Size = UDim2.fromScale(0.55, 0.62) },
 		Glow = Color3.fromRGB(255, 225, 60),
-		GlowThickness = 10,
+		RingThickness = 10,
 		TitleColor = Color3.fromRGB(255, 250, 205),
 		DescriptionColor = Color3.fromRGB(235, 55, 70),
 		DescriptionAlign = "Right",
@@ -134,7 +198,7 @@ ShopConfig.Items = {
 		Icon = ART.Shield,
 		IconLayout = { Position = UDim2.fromScale(0.875, 0.3), Size = UDim2.fromScale(0.2, 0.5) },
 		Glow = Color3.fromRGB(70, 120, 255),
-		GlowThickness = 9,
+		RingThickness = 9,
 		Outline = Color3.fromRGB(150, 180, 255),
 		TitleColor = Color3.fromRGB(135, 125, 255),
 		TitleStroke = Color3.fromRGB(15, 10, 60),
@@ -179,6 +243,7 @@ ShopConfig.Items = {
 		Image = "rbxassetid://0",
 		Color = { Color3.fromRGB(255, 120, 200), Color3.fromRGB(230, 50, 150) },
 		Icon = ART.Coins,
+		Glow = Color3.fromRGB(255, 100, 195),
 		PatternColor = Color3.new(1, 1, 1),
 		PatternTransparency = 0.7,
 	},
@@ -191,6 +256,7 @@ ShopConfig.Items = {
 		Image = "rbxassetid://0",
 		Color = { Color3.fromRGB(255, 120, 200), Color3.fromRGB(230, 50, 150) },
 		Icon = ART.Coins,
+		Glow = Color3.fromRGB(255, 100, 195),
 		PatternColor = Color3.new(1, 1, 1),
 		PatternTransparency = 0.7,
 	},
@@ -203,6 +269,7 @@ ShopConfig.Items = {
 		Image = "rbxassetid://0",
 		Color = { Color3.fromRGB(255, 120, 200), Color3.fromRGB(230, 50, 150) },
 		Icon = ART.Coins,
+		Glow = Color3.fromRGB(255, 100, 195),
 		PatternColor = Color3.new(1, 1, 1),
 		PatternTransparency = 0.7,
 	},

@@ -28,6 +28,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- Mismo asset que UBG a pedido (si da error de permisos, resubirlo a esta cuenta).
 UIEffects.ClickSoundId = "rbxassetid://103282937573040"
 UIEffects.ClickVolume = 0.5
+-- false = los botones (bindButton) no suenan al clickear; el hover sí.
+UIEffects.ClickSoundEnabled = false
+
+-- Sonido al pasar el mouse por encima de un botón (bindHover sobre un GuiButton).
+UIEffects.HoverSoundId = "rbxassetid://139800881181209"
+UIEffects.HoverVolume = 0.5
 
 -- "Pop" de botón: cuánto crece y cuánto tarda cada mitad del rebote.
 UIEffects.PopScale = 1.12
@@ -75,15 +81,30 @@ clickSound.SoundId = UIEffects.ClickSoundId
 clickSound.Volume = UIEffects.ClickVolume
 clickSound.Parent = SoundService
 
+local hoverSound = Instance.new("Sound")
+hoverSound.Name = "UIHover"
+hoverSound.SoundId = UIEffects.HoverSoundId
+hoverSound.Volume = UIEffects.HoverVolume
+hoverSound.Parent = SoundService
+
 task.spawn(function()
-	local ok, err = pcall(ContentProvider.PreloadAsync, ContentProvider, { clickSound })
+	local ok, err = pcall(ContentProvider.PreloadAsync, ContentProvider, { clickSound, hoverSound })
 	if not ok then
-		DebugConfig.warn("[UIEffects] No se pudo precargar el click: " .. tostring(err))
+		DebugConfig.warn("[UIEffects] No se pudieron precargar los sonidos de UI: " .. tostring(err))
 	end
 end)
 
 function UIEffects.playClickSound()
+	if not UIEffects.ClickSoundEnabled then
+		return
+	end
 	clickSound:Play()
+end
+
+-- Pasar el mouse rápido por varios botones dispara varios hover: van con clon
+-- descartable (playOneShot) para que no se corten entre sí.
+function UIEffects.playHoverSound()
+	UIEffects.playOneShot(hoverSound)
 end
 
 -- Sonido suelto que se destruye solo al terminar.
@@ -172,6 +193,11 @@ export type HoverOptions = {
 	-- CanvasGroup (usa GroupTransparency) o un ImageLabel (ImageTransparency). Con hover
 	-- toma la transparencia que tiene en Studio; en reposo queda invisible.
 	Reveal: (CanvasGroup | ImageLabel)?,
+	-- Segundos de la transición (default UIEffects.HoverDuration). Con Duration propia la
+	-- curva es Quint: arranca rápido y frena suave, se siente más "smooth".
+	Duration: number?,
+	-- Sonido de hover. Default: sí en botones (GuiButton), no en el resto (ej. tarjetas).
+	Sound: boolean?,
 }
 
 -- Hover: crece un poco y (opcional) gira hacia la derecha; vuelve al salir el mouse.
@@ -193,22 +219,29 @@ function UIEffects.bindHover(object: GuiObject, options: HoverOptions?)
 	local target = opts.RotateTarget or object
 	local baseRotation = target.Rotation
 	local scale = getScale(object, POP_SCALE_NAME)
+	local info = if opts.Duration
+		then TweenInfo.new(opts.Duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		else HOVER
+	local playSound = if opts.Sound ~= nil then opts.Sound else object:IsA("GuiButton")
 
 	local function setHovered(hovered: boolean)
 		if reveal then
-			TweenService:Create(reveal, HOVER, { [revealProperty] = if hovered then revealTransparency else 1 }):Play()
+			TweenService:Create(reveal, info, { [revealProperty] = if hovered then revealTransparency else 1 }):Play()
 		end
 		hoverBase[object] = if hovered then hoverScale else nil
 		-- Si hay un pop en curso, él mismo vuelve a la escala nueva al terminar.
 		if not popping[object] then
-			TweenService:Create(scale, HOVER, { Scale = hoverBase[object] or 1 }):Play()
+			TweenService:Create(scale, info, { Scale = hoverBase[object] or 1 }):Play()
 		end
 		if rotation ~= 0 then
-			TweenService:Create(target, HOVER, { Rotation = baseRotation + (if hovered then rotation else 0) }):Play()
+			TweenService:Create(target, info, { Rotation = baseRotation + (if hovered then rotation else 0) }):Play()
 		end
 	end
 
 	object.MouseEnter:Connect(function()
+		if playSound then
+			UIEffects.playHoverSound()
+		end
 		setHovered(true)
 	end)
 	object.MouseLeave:Connect(function()
@@ -241,25 +274,30 @@ local function playWindowTween(frame: GuiObject, info: TweenInfo, goal: number, 
 	tween:Play()
 end
 
--- Muestra la ventana creciendo con un rebote.
-function UIEffects.popIn(frame: GuiObject)
+-- Muestra la ventana creciendo con un rebote. `hiddenScale` = desde qué tamaño arranca
+-- (default UIEffects.WindowHiddenScale) y `duration` cuánto tarda en llegar a 1. Crece
+-- desde el AnchorPoint del frame: con 0.5, 0.5 se abre desde el centro.
+function UIEffects.popIn(frame: GuiObject, hiddenScale: number?, duration: number?)
 	if not frame.Visible then
-		getScale(frame, WINDOW_SCALE_NAME).Scale = UIEffects.WindowHiddenScale
+		getScale(frame, WINDOW_SCALE_NAME).Scale = hiddenScale or UIEffects.WindowHiddenScale
 		frame.Visible = true
 	end
-	playWindowTween(frame, WINDOW_OPEN, 1)
+	local info = if duration
+		then TweenInfo.new(duration, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		else WINDOW_OPEN
+	playWindowTween(frame, info, 1)
 end
 
 -- Achica la ventana y la oculta al terminar. `onHidden` corre solo si el cierre
 -- terminó de verdad (no si un popIn lo interrumpió).
-function UIEffects.popOut(frame: GuiObject, onHidden: (() -> ())?)
+function UIEffects.popOut(frame: GuiObject, onHidden: (() -> ())?, hiddenScale: number?)
 	if not frame.Visible then
 		if onHidden then
 			onHidden()
 		end
 		return
 	end
-	playWindowTween(frame, WINDOW_CLOSE, UIEffects.WindowHiddenScale, function()
+	playWindowTween(frame, WINDOW_CLOSE, hiddenScale or UIEffects.WindowHiddenScale, function()
 		frame.Visible = false
 		if onHidden then
 			onHidden()

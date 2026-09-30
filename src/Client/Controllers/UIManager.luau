@@ -24,11 +24,18 @@ local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 export type WindowOptions = {
 	-- false = sin popIn/popOut (la ventana solo se muestra/oculta). Default true.
 	Animate: boolean?,
+	-- Escala desde la que entra y hacia la que sale (default UIEffects.WindowHiddenScale).
+	-- Ej. 0.1 = se abre chiquita desde el centro hasta su tamaño normal.
+	HiddenScale: number?,
+	-- Segundos que tarda en abrirse (default UIEffects.WindowOpenDuration).
+	OpenDuration: number?,
 }
 
 type Window = {
 	frame: GuiObject,
 	animate: boolean,
+	hiddenScale: number?,
+	openDuration: number?,
 	closeConnection: RBXScriptConnection?,
 }
 
@@ -86,6 +93,8 @@ function UIManager.Register(name: string, mainFrame: GuiObject, options: WindowO
 	local window: Window = {
 		frame = mainFrame,
 		animate = not (options and options.Animate == false),
+		hiddenScale = options and options.HiddenScale,
+		openDuration = options and options.OpenDuration,
 		closeConnection = nil,
 	}
 
@@ -103,7 +112,7 @@ end
 
 local function show(window: Window)
 	if window.animate then
-		UIEffects.popIn(window.frame)
+		UIEffects.popIn(window.frame, window.hiddenScale, window.openDuration)
 	else
 		window.frame.Visible = true
 	end
@@ -111,7 +120,7 @@ end
 
 local function hide(window: Window)
 	if window.animate then
-		UIEffects.popOut(window.frame)
+		UIEffects.popOut(window.frame, nil, window.hiddenScale)
 	else
 		window.frame.Visible = false
 	end

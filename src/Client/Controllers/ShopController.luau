@@ -4,10 +4,21 @@
 -- (la abre HUD.ShopButton vía HUDController) y arma una tarjeta por item de
 -- ShopConfig.Rows clonando UITemplates.ShopCard.
 --
--- Plantilla ShopCard (armada en Studio, orden de dibujo de atrás hacia adelante):
---   Glow (brillo 9-slice) > Ring (anillo de color) > Background (CanvasGroup: Art, Rays,
---   Pattern, TitleBar) > Outline (borde negro) > Icon > Title/Subtitle/Description >
---   GemButton + Actions (GiftButton, BuyButton).
+-- DÓNDE SE EDITA CADA COSA
+--   · Items, precios, colores e íconos de cada tarjeta ....... ShopConfig.Items / Rows
+--   · Esquinas, borde, brillo, hover, espaciados, blur, apertura ShopConfig.Style
+--   · Sonidos al abrir la tienda ............................. ShopConfig.Sounds
+--   · Colores de los botones (comprar / VIEW / OWNED / regalo / gema)
+--       ShopConfig.ButtonColors y ButtonStyle
+--   · Forma de las capas (fuentes, posiciones base) .......... plantilla en Studio
+--   · Posiciones que cambian según el tipo de tarjeta ........ "Layout por tipo" (abajo)
+--
+-- Plantilla ShopCard (Studio), de atrás hacia adelante:
+--   Glow (vacío: acá se crean las capas del brillo) > Ring (anillo sólido) >
+--   Background (CanvasGroup: Art, Rays, Pattern, InnerLine, TitleBar) > Outline (borde) >
+--   Icon > Title / Subtitle / Description > GemSlot + Actions (GiftSlot, BuySlot).
+--   Cada botón va centrado dentro de su *Slot: el hover lo escala desde el centro sin
+--   empujar a los demás.
 --
 -- El cliente nunca compra por su cuenta: manda el Id del item por "RequestShopPurchase"
 -- y ShopService valida y abre el prompt de Roblox. Los items "View" abren otra ventana
@@ -16,6 +27,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
+local ContentProvider = game:GetService("ContentProvider")
 
 local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local Utils = script.Parent.Parent:WaitForChild("Utils")
@@ -27,57 +39,50 @@ local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
 local ShopController = {}
 
+local Style = ShopConfig.Style
+
 local WINDOW_NAME = "Shop"
 local GUI_NAME = "ShopGui"
 local CARD_TEMPLATE = "ShopCard"
+local BLUR_NAME = "ShopBlur"
 
--- Separación entre tarjetas de una misma fila (Scale del ancho de la fila).
-local CARD_GAP = 0.035
--- Separación vertical entre filas, como fracción del ancho de la lista.
-local ROW_GAP = 0.04
--- Márgenes de la lista (costados y arriba/abajo), también como fracción de su ancho.
-local SIDE_PADDING = 0.045
-local EDGE_PADDING = 0.045
--- Tamaño máximo del texto de la descripción, como fracción del alto de la tarjeta.
-local DESCRIPTION_TEXT = 0.115
--- Los UIStroke usan su grosor de Studio a 1080 px de alto; en pantallas más chicas
--- (celular) se afinan en proporción, hasta la mitad, para no tapar el texto.
+-- Los UIStroke usan su grosor a 1080 px de alto; en pantallas más chicas (celular) se
+-- afinan en proporción, hasta la mitad, para no tapar el texto.
 local REFERENCE_HEIGHT = 1080
 local MIN_STROKE_FACTOR = 0.5
--- Brillo de las tarjetas: cuánto sobresale (px a 1080). La textura cae en 64 px, así que
--- SliceScale = extent / 64 hace que el brillo arranque justo en el borde de la tarjeta.
-local GLOW_EXTENT = 22
-local GLOW_SLICE_SCALE = GLOW_EXTENT / 64
--- Cuánto se aclara el color del brillo para la línea interior del borde.
-local INNER_LINE_LIGHTEN = 0.45
 
--- Hover: tarjetas comunes (no las destacadas ni el pase) y botones de cada tarjeta.
-local CARD_HOVER = { Scale = 1.03 }
-local BUTTON_HOVER = { Scale = 1.08, Rotation = 5 }
+-- Capas de la tarjeta cuyo UICorner se iguala a Style.CornerRadius.
+local CORNER_LAYERS = { Ring = true, Background = true, Outline = true, InnerLine = true }
 
--- Desenfoque del mundo mientras la tienda está abierta.
-local BLUR_NAME = "ShopBlur"
-local BLUR_SIZE = 16
-local BLUR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- ─── Layout por tipo de tarjeta ─────────────────────────────────────────────────
 
--- PriceLabel con el ícono de Robux a la izquierda (igual que la plantilla) o solo.
-local PRICE_WITH_ICON = { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(0.95, 0.5), Size = UDim2.fromScale(0.62, 0.82) }
-local PRICE_ALONE = { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.86, 0.8) }
-
--- Ubicación de los botones (Actions) según el tipo de tarjeta.
+-- Botones (Actions): tarjeta común, destacada (bundle) y pase.
 local ACTIONS_DEFAULT = { Position = UDim2.fromScale(0.97, 0.95), Size = UDim2.fromScale(0.62, 0.22) }
 local ACTIONS_FEATURED = { Position = UDim2.fromScale(0.965, 0.95), Size = UDim2.fromScale(0.72, 0.25) }
 local ACTIONS_BANNER = { Position = UDim2.fromScale(0.975, 0.93), Size = UDim2.fromScale(0.37, 0.3) }
+-- Proporción ancho/alto del botón de compra y del botón VIEW.
 local BUY_ASPECT = 2.5
 local VIEW_ASPECT = 2.4
+-- PriceLabel centrado: el símbolo de Robux va dentro del mismo texto.
+local PRICE_LAYOUT = { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.9, 0.86) }
+-- Ícono de Robux de las fuentes de Roblox (se dibuja como texto, con el mismo borde).
+local ROBUX_GLYPH = utf8.char(0xE002)
+-- Pase (Banner): título grande a la izquierda y descripción debajo.
+local BANNER_TITLE = { Position = UDim2.fromScale(0.03, 0.04), Size = UDim2.fromScale(0.62, 0.27) }
+local BANNER_DESCRIPTION = { Position = UDim2.fromScale(0.03, 0.31), Size = UDim2.fromScale(0.62, 0.12) }
+-- Descripción centrada en la mitad derecha (DescriptionAlign = "Right", bundle).
+local RIGHT_DESCRIPTION = { Position = UDim2.fromScale(0.42, 0.2), Size = UDim2.fromScale(0.56, 0.42) }
+-- Descripción corrida hacia abajo cuando hay subtítulo.
+local SUBTITLE_DESCRIPTION_Y = 0.46
 
 local main: GuiObject
 local content: ScrollingFrame
 local blur: BlurEffect
+local openSounds: { Sound } = {}
 local owned: { [string]: boolean } = {}
 local cards: { [string]: GuiObject } = {}
 
--- ─── Tamaños responsivos (bordes y brillo) ──────────────────────────────────────
+-- ─── Helpers ────────────────────────────────────────────────────────────────────
 
 local function strokeFactor(): number
 	local camera = Workspace.CurrentCamera
@@ -85,25 +90,29 @@ local function strokeFactor(): number
 	return math.clamp(height / REFERENCE_HEIGHT, MIN_STROKE_FACTOR, 1)
 end
 
+-- Todos los UIStroke (bordes, anillo, capas del brillo) se escalan con la pantalla. El
+-- grosor "de diseño" queda guardado en el atributo BaseThickness.
 local function scaleStrokes(root: Instance)
 	local factor = strokeFactor()
-	for _, object in root:GetDescendants() do
-		if object:IsA("UIStroke") then
-			local base = object:GetAttribute("BaseThickness")
+	for _, stroke in root:GetDescendants() do
+		if stroke:IsA("UIStroke") then
+			local base = stroke:GetAttribute("BaseThickness")
 			if typeof(base) ~= "number" then
-				base = object.Thickness
-				object:SetAttribute("BaseThickness", base)
+				base = stroke.Thickness
+				stroke:SetAttribute("BaseThickness", base)
 			end
-			object.Thickness = math.max(1, base * factor)
-		elseif object:IsA("ImageLabel") and object.Name == "Glow" then
-			local extent = GLOW_EXTENT * factor
-			object.Size = UDim2.new(1, extent * 2, 1, extent * 2)
-			object.SliceScale = GLOW_SLICE_SCALE * factor
+			stroke.Thickness = math.max(1, base * factor)
+			-- Aro interior de un botón: su Frame se achica lo mismo que engorda el trazo,
+			-- así el aro queda siempre pegado al borde negro, sin hueco ni encimado.
+			if stroke:GetAttribute("Rim") and stroke.Parent and stroke.Parent:IsA("GuiObject") then
+				-- Entero: el Offset de Size no admite decimales y el aro se metería en el borde.
+				stroke.Thickness = math.max(1, math.round(stroke.Thickness))
+				local rim = stroke.Thickness
+				stroke.Parent.Size = UDim2.new(1, -2 * rim, 1, -2 * rim)
+			end
 		end
 	end
 end
-
--- ─── Tarjetas ───────────────────────────────────────────────────────────────────
 
 local function setGradient(object: Instance, colors: { Color3 })
 	local gradient = object:FindFirstChildOfClass("UIGradient")
@@ -132,97 +141,116 @@ local function setAspect(object: Instance, ratio: number)
 	end
 end
 
--- Estado del botón: VIEW, OWNED o precio en Robux.
-local function styleBuyButton(card: GuiObject, itemId: string, item: ShopConfig.Item)
-	local buy = card:FindFirstChild("BuyButton", true)
-	if not buy then
-		return
-	end
-	local robux = buy:FindFirstChild("RobuxIcon") :: ImageLabel?
-	local price = buy:FindFirstChild("PriceLabel") :: TextLabel?
-	local inner = buy:FindFirstChild("Inner") :: Frame?
-
-	local isView = item.Kind == "View"
-	local text, colors, showRobux
-	if isView then
-		text, colors, showRobux = "VIEW", ShopConfig.ButtonColors.View, false
-	elseif owned[itemId] then
-		text, colors, showRobux = "OWNED", ShopConfig.ButtonColors.Owned, false
-	else
-		text, colors, showRobux = tostring(item.Price or "?"), ShopConfig.ButtonColors.Buy, true
-	end
-
-	setGradient(buy, colors)
-	setAspect(buy, if isView then VIEW_ASPECT else BUY_ASPECT)
-	if inner then
-		-- Borde blanco interior: solo el botón VIEW lo lleva.
-		inner.Visible = isView
-	end
-	if robux then
-		robux.Visible = showRobux
-		robux.Image = ShopConfig.Icons.Robux
-	end
-	if price then
-		price.Text = text
-		applyProps(price, if showRobux then PRICE_WITH_ICON else PRICE_ALONE)
-	end
+-- El Slot que contiene al botón (para mostrarlo/ocultarlo sin romper el layout).
+local function slotOf(button: Instance): GuiObject?
+	local parent = button.Parent
+	return if parent and parent:IsA("GuiObject") and parent.Name:match("Slot$") then parent else nil
 end
 
-local function onBuy(itemId: string, item: ShopConfig.Item)
-	if item.Kind == "View" then
-		if item.ViewTarget then
-			UIManager.Open(item.ViewTarget)
+-- ─── Marco: esquinas, borde, anillo y brillo ────────────────────────────────────
+
+local function applyCorners(card: GuiObject)
+	for _, corner in card:GetDescendants() do
+		if corner:IsA("UICorner") and corner.Parent and CORNER_LAYERS[corner.Parent.Name] then
+			corner.CornerRadius = UDim.new(Style.CornerRadius, 0)
 		end
-		return
 	end
-	if owned[itemId] then
-		return
-	end
-	if not item.ProductId or item.ProductId == 0 then
-		DebugConfig.warn(("[ShopController] '%s' no tiene ProductId en ShopConfig todavía"):format(itemId))
-		return
-	end
-	-- Solo el Id: el servidor busca el producto y abre el prompt.
-	Remotes.event("RequestShopPurchase"):FireServer(itemId)
 end
 
--- Brillo, anillo de color y borde interior.
+-- Brillo difuminado con la MISMA forma que la tarjeta: anillos de UIStroke de un
+-- grosor cada vez mayor (un paso por capa) sobre Frames con el UICorner de la tarjeta,
+-- así que las esquinas quedan redondas como ella. Las capas se suman: en una distancia
+-- `d` del borde se ven todas las que llegan hasta ahí. La transparencia de cada una se
+-- calcula para que la suma siga una curva suave, Opacity pegado al borde y 0 al final
+-- de Spread (curva ^ Curve): un desenfoque parejo, sin bandas ni borde duro.
+local function buildGlow(card: GuiObject, color: Color3?, startAt: number)
+	local container = card:FindFirstChild("Glow")
+	if not container then
+		return
+	end
+	container:ClearAllChildren()
+	if not color then
+		return
+	end
+	local glow = Style.Glow
+	local layers = math.max(1, glow.Layers)
+
+	-- Opacidad buscada en la franja de cada capa (1 = pegada al borde).
+	local function target(index: number): number
+		if index > layers then
+			return 0
+		end
+		return glow.Opacity * (1 - (index - 1) / layers) ^ glow.Curve
+	end
+
+	for index = 1, layers do
+		-- La franja `index` la cubren las capas index..layers: esta capa aporta lo que
+		-- falta para pasar de la opacidad de la franja siguiente a la de la suya.
+		local alpha = 1 - (1 - target(index)) / (1 - target(index + 1))
+
+		local layer = Instance.new("Frame")
+		layer.Name = "Layer" .. index
+		layer.BackgroundTransparency = 1
+		layer.Size = UDim2.fromScale(1, 1)
+		layer.ZIndex = 0
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(Style.CornerRadius, 0)
+		corner.Parent = layer
+
+		local stroke = Instance.new("UIStroke")
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.LineJoinMode = Enum.LineJoinMode.Round
+		stroke.Color = color
+		stroke.Transparency = 1 - alpha
+		stroke.Thickness = startAt + glow.Spread * index / layers
+		stroke.Parent = layer
+
+		layer.Parent = container
+	end
+end
+
 local function styleFrame(card: GuiObject, item: ShopConfig.Item)
-	local glow = card:FindFirstChild("Glow") :: ImageLabel?
+	applyCorners(card)
+
+	local outline = card:FindFirstChild("Outline")
+	local outlineStroke = outline and outline:FindFirstChildOfClass("UIStroke")
+	if outlineStroke then
+		outlineStroke.Thickness = Style.OutlineThickness
+		if item.Outline then
+			outlineStroke.Color = item.Outline
+		end
+	end
+
+	-- Anillo sólido (bundle, pase): va por fuera del borde negro.
+	local ringThickness = if item.Glow then item.RingThickness or Style.RingThickness else 0
 	local ring = card:FindFirstChild("Ring") :: Frame?
-	if glow then
-		glow.Visible = item.Glow ~= nil
-		if item.Glow then
-			glow.ImageColor3 = item.Glow
-		end
-	end
 	if ring then
-		-- Anillo sólido solo si el item pide grosor (bundle, pase); el resto va con brillo solo.
-		local thickness = item.GlowThickness or ShopConfig.GlowThickness
-		ring.Visible = item.Glow ~= nil and thickness > 0
+		ring.Visible = ringThickness > 0
 		local ringStroke = ring:FindFirstChildOfClass("UIStroke")
-		if ringStroke and item.Glow and thickness > 0 then
+		if ringStroke and item.Glow and ringThickness > 0 then
 			ringStroke.Color = item.Glow
-			ringStroke.Thickness = thickness
+			ringStroke.Thickness = Style.OutlineThickness + ringThickness
 		end
 	end
+
+	-- El brillo arranca donde termina el borde (y el anillo, si hay).
+	buildGlow(card, item.Glow, Style.OutlineThickness + ringThickness)
+
+	-- Línea clara por dentro del borde, del color del brillo aclarado.
 	local background = card:FindFirstChild("Background")
 	local innerLine = background and background:FindFirstChild("InnerLine") :: Frame?
 	if innerLine then
 		innerLine.Visible = item.Glow ~= nil
 		local innerStroke = innerLine:FindFirstChildOfClass("UIStroke")
 		if innerStroke and item.Glow then
-			innerStroke.Color = item.Glow:Lerp(Color3.new(1, 1, 1), INNER_LINE_LIGHTEN)
+			innerStroke.Color = item.Glow:Lerp(Color3.new(1, 1, 1), Style.InnerLineLighten)
 		end
-	end
-	local outline = card:FindFirstChild("Outline")
-	local outlineStroke = outline and outline:FindFirstChildOfClass("UIStroke")
-	if outlineStroke and item.Outline then
-		outlineStroke.Color = item.Outline
 	end
 end
 
--- Fondo: imagen o degradé, más los adornos (rayos, puntos) y el ícono del item.
+-- ─── Fondo e ícono ──────────────────────────────────────────────────────────────
+
 local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 	local background = card:FindFirstChild("Background")
 	if background then
@@ -259,11 +287,12 @@ local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 		icon.Visible = hasImage(item.Icon)
 		icon.Image = item.Icon or ""
 		if item.IconLayout then
-			icon.Position = item.IconLayout.Position
-			icon.Size = item.IconLayout.Size
+			applyProps(icon, item.IconLayout)
 		end
 	end
 end
+
+-- ─── Textos ─────────────────────────────────────────────────────────────────────
 
 local function styleTexts(card: GuiObject, item: ShopConfig.Item)
 	local title = card:FindFirstChild("Title") :: TextLabel?
@@ -277,9 +306,7 @@ local function styleTexts(card: GuiObject, item: ShopConfig.Item)
 			titleStroke.Color = item.TitleStroke
 		end
 		if item.Banner then
-			-- Estilo pase: título grande alineado a la izquierda, sin barra.
-			title.Position = UDim2.fromScale(0.03, 0.04)
-			title.Size = UDim2.fromScale(0.62, 0.27)
+			applyProps(title, BANNER_TITLE)
 			title.TextXAlignment = Enum.TextXAlignment.Left
 			if titleStroke then
 				titleStroke.Thickness = 4
@@ -304,20 +331,18 @@ local function styleTexts(card: GuiObject, item: ShopConfig.Item)
 			description.TextColor3 = item.DescriptionColor
 		end
 		if item.Banner then
-			description.Position = UDim2.fromScale(0.03, 0.31)
-			description.Size = UDim2.fromScale(0.62, 0.12)
+			applyProps(description, BANNER_DESCRIPTION)
 		elseif item.DescriptionAlign == "Right" then
-			description.Position = UDim2.fromScale(0.42, 0.2)
-			description.Size = UDim2.fromScale(0.56, 0.42)
+			applyProps(description, RIGHT_DESCRIPTION)
 			description.TextXAlignment = Enum.TextXAlignment.Center
 		elseif item.Subtitle then
-			description.Position = UDim2.fromScale(0.015, 0.46)
+			description.Position = UDim2.fromScale(description.Position.X.Scale, SUBTITLE_DESCRIPTION_Y)
 		end
 		local limit = description:FindFirstChildOfClass("UITextSizeConstraint")
 		if limit then
 			-- TextScaled llenaría la caja con textos cortos: se topa según el alto de la tarjeta.
 			local function fit()
-				limit.MaxTextSize = math.max(8, math.floor(card.AbsoluteSize.Y * DESCRIPTION_TEXT))
+				limit.MaxTextSize = math.max(8, math.floor(card.AbsoluteSize.Y * Style.DescriptionTextSize))
 			end
 			card:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 			fit()
@@ -325,49 +350,201 @@ local function styleTexts(card: GuiObject, item: ShopConfig.Item)
 	end
 end
 
+-- ─── Botones ────────────────────────────────────────────────────────────────────
+
+-- Grosor de diseño (px a 1080) guardado para scaleStrokes + grosor real ya escalado:
+-- así un botón re-estilado después (ej. al pasar a OWNED) no vuelve al grosor crudo.
+local function setStrokeThickness(stroke: UIStroke, base: number)
+	stroke:SetAttribute("BaseThickness", base)
+	stroke.Thickness = math.max(1, base * strokeFactor())
+end
+
+-- Look común de los botones de la tarjeta: degradé, borde oscuro grueso y un aro claro
+-- pegado por dentro del borde (el degradé del botón aclarado). `key` es la clave en
+-- ShopConfig.ButtonColors.
+local function styleButtonSkin(button: Instance, key: string)
+	local buttonStyle = ShopConfig.ButtonStyle
+	local colors = ShopConfig.ButtonColors[key]
+	setGradient(button, colors)
+
+	local corner = button:FindFirstChildOfClass("UICorner")
+	if corner then
+		corner.CornerRadius = UDim.new(buttonStyle.CornerRadius, 0)
+	end
+	local stroke = button:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = buttonStyle.OutlineColor
+		setStrokeThickness(stroke, buttonStyle.OutlineThickness)
+	end
+
+	local inner = button:FindFirstChild("Inner")
+	if not (inner and inner:IsA("GuiObject")) then
+		return
+	end
+	inner.Visible = true
+	inner.AnchorPoint = Vector2.new(0.5, 0.5)
+	inner.Position = UDim2.fromScale(0.5, 0.5)
+	inner.BackgroundTransparency = 1
+	local innerCorner = inner:FindFirstChildOfClass("UICorner")
+	if innerCorner then
+		innerCorner.CornerRadius = UDim.new(buttonStyle.CornerRadius, 0)
+	end
+	local rimStroke = inner:FindFirstChildOfClass("UIStroke")
+	if rimStroke then
+		local white = Color3.new(1, 1, 1)
+		rimStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		rimStroke.Color = white
+		rimStroke.Transparency = 0
+		-- El UIGradient hijo del UIStroke pinta el trazo con el mismo degradé, aclarado.
+		setGradient(rimStroke, {
+			colors[1]:Lerp(white, buttonStyle.RimLighten),
+			colors[2]:Lerp(white, buttonStyle.RimLighten),
+		})
+		rimStroke:SetAttribute("Rim", true)
+		setStrokeThickness(rimStroke, buttonStyle.RimThickness)
+		rimStroke.Thickness = math.max(1, math.round(rimStroke.Thickness))
+		local rim = rimStroke.Thickness
+		inner.Size = UDim2.new(1, -2 * rim, 1, -2 * rim)
+	end
+end
+
+-- Estado del botón de compra: VIEW, OWNED o precio en Robux.
+local function styleBuyButton(card: GuiObject, itemId: string, item: ShopConfig.Item)
+	local buy = card:FindFirstChild("BuyButton", true)
+	if not buy then
+		return
+	end
+	local price = buy:FindFirstChild("PriceLabel") :: TextLabel?
+
+	local isView = item.Kind == "View"
+	local text, key
+	if isView then
+		text, key = "VIEW", "View"
+	elseif owned[itemId] then
+		text, key = "OWNED", "Owned"
+	else
+		text, key = ROBUX_GLYPH .. tostring(item.Price or "?"), "Buy"
+	end
+
+	styleButtonSkin(buy, key)
+	local slot = slotOf(buy)
+	if slot then
+		setAspect(slot, if isView then VIEW_ASPECT else BUY_ASPECT)
+	end
+	if price then
+		local buttonStyle = ShopConfig.ButtonStyle
+		price.Text = text
+		price.FontFace = buttonStyle.PriceFont
+		applyProps(price, PRICE_LAYOUT)
+		local priceStroke = price:FindFirstChildOfClass("UIStroke")
+		if priceStroke then
+			priceStroke.Color = buttonStyle.PriceStrokeColor
+			priceStroke.Thickness = buttonStyle.PriceStrokeThickness
+		end
+	end
+end
+
+local function onBuy(itemId: string, item: ShopConfig.Item)
+	if item.Kind == "View" then
+		if item.ViewTarget then
+			UIManager.Open(item.ViewTarget)
+		end
+		return
+	end
+	if owned[itemId] then
+		return
+	end
+	if not item.ProductId or item.ProductId == 0 then
+		DebugConfig.warn(("[ShopController] '%s' no tiene ProductId en ShopConfig todavía"):format(itemId))
+		return
+	end
+	-- Solo el Id: el servidor busca el producto y abre el prompt.
+	Remotes.event("RequestShopPurchase"):FireServer(itemId)
+end
+
+-- Botón de la tarjeta: click + hover (el mismo para regalo, gema y compra).
+local function bindCardButton(button: GuiButton?, visible: boolean, onClick: () -> ())
+	if not button then
+		return
+	end
+	local slot = slotOf(button)
+	if slot then
+		slot.Visible = visible
+	else
+		button.Visible = visible
+	end
+	if not visible then
+		return
+	end
+	UIEffects.bindButton(button, onClick)
+	UIEffects.bindHover(button, Style.Hover.Button)
+end
+
+-- El botón de gema va justo arriba del de compra: mismo tamaño, alineado a su borde
+-- derecho y separado por la MISMA distancia que hay entre regalo y compra. Ese hueco es
+-- ButtonStyle.Gap del ancho de Actions (en px), así que se recalcula cuando cambia el
+-- tamaño de la tarjeta.
+local function placeAboveActions(card: GuiObject, actions: GuiObject, slot: GuiObject)
+	local function fit()
+		local cardHeight = card.AbsoluteSize.Y
+		if cardHeight <= 0 then
+			return
+		end
+		local gap = ShopConfig.ButtonStyle.Gap * actions.AbsoluteSize.X / cardHeight
+		slot.AnchorPoint = Vector2.new(1, 1)
+		slot.Size = UDim2.fromScale(slot.Size.X.Scale, actions.Size.Y.Scale)
+		slot.Position = UDim2.fromScale(actions.Position.X.Scale, actions.Position.Y.Scale - actions.Size.Y.Scale - gap)
+	end
+	card:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	fit()
+end
+
 local function bindButtons(card: GuiObject, itemId: string, item: ShopConfig.Item)
 	local actions = card:FindFirstChild("Actions") :: Frame?
 	if actions then
 		applyProps(actions, if item.Banner then ACTIONS_BANNER elseif item.Featured then ACTIONS_FEATURED else ACTIONS_DEFAULT)
+		local layout = actions:FindFirstChildOfClass("UIListLayout")
+		if layout then
+			layout.Padding = UDim.new(ShopConfig.ButtonStyle.Gap, 0)
+		end
 	end
 
 	local gift = card:FindFirstChild("GiftButton", true) :: GuiButton?
+	local giftIcon = gift and gift:FindFirstChild("Icon") :: ImageLabel?
+	if giftIcon then
+		giftIcon.Image = ShopConfig.Icons.Gift
+	end
 	if gift then
-		gift.Visible = ShopConfig.GiftEnabled
-		local giftIcon = gift:FindFirstChild("Icon") :: ImageLabel?
-		if giftIcon then
-			giftIcon.Image = ShopConfig.Icons.Gift
-		end
-		UIEffects.bindButton(gift, function()
-			DebugConfig.warn(("[ShopController] Regalar '%s': flujo de regalos sin implementar"):format(itemId))
-		end)
-		UIEffects.bindHover(gift, BUTTON_HOVER)
+		styleButtonSkin(gift, "Gift")
 	end
+	bindCardButton(gift, ShopConfig.GiftEnabled, function()
+		DebugConfig.warn(("[ShopController] Regalar '%s': flujo de regalos sin implementar"):format(itemId))
+	end)
 
-	local gem = card:FindFirstChild("GemButton") :: GuiButton?
+	local gem = card:FindFirstChild("GemButton", true) :: GuiButton?
+	local gemIcon = gem and gem:FindFirstChild("Icon") :: ImageLabel?
+	if gemIcon then
+		gemIcon.Image = ShopConfig.Icons.Gem
+	end
 	if gem then
-		gem.Visible = item.Gem == true
-		local gemIcon = gem:FindFirstChild("Icon") :: ImageLabel?
-		if gemIcon then
-			gemIcon.Image = ShopConfig.Icons.Gem
-		end
-		if item.Gem then
-			UIEffects.bindButton(gem, function()
-				DebugConfig.warn(("[ShopController] Comprar '%s' con gemas: sin implementar"):format(itemId))
-			end)
-			UIEffects.bindHover(gem, BUTTON_HOVER)
+		styleButtonSkin(gem, "Gem")
+		local gemSlot = slotOf(gem)
+		if gemSlot and actions then
+			placeAboveActions(card, actions, gemSlot)
 		end
 	end
+	bindCardButton(gem, item.Gem == true, function()
+		DebugConfig.warn(("[ShopController] Comprar '%s' con gemas: sin implementar"):format(itemId))
+	end)
 
 	local buy = card:FindFirstChild("BuyButton", true) :: GuiButton?
-	if buy then
-		UIEffects.bindButton(buy, function()
-			onBuy(itemId, item)
-		end)
-		UIEffects.bindHover(buy, BUTTON_HOVER)
-	end
+	bindCardButton(buy, true, function()
+		onBuy(itemId, item)
+	end)
 	styleBuyButton(card, itemId, item)
 end
+
+-- ─── Armado de la tienda ────────────────────────────────────────────────────────
 
 local function buildCard(itemId: string, item: ShopConfig.Item, width: number): GuiObject?
 	local card = UITemplates.clone(CARD_TEMPLATE)
@@ -383,7 +560,7 @@ local function buildCard(itemId: string, item: ShopConfig.Item, width: number): 
 	bindButtons(card, itemId, item)
 
 	if not (item.Featured or item.Banner) then
-		UIEffects.bindHover(card, CARD_HOVER)
+		UIEffects.bindHover(card, Style.Hover.Card)
 	end
 
 	cards[itemId] = card
@@ -393,9 +570,10 @@ end
 -- Cada fila es un Frame horizontal cuyo alto sale de su ancho (UIAspectRatioConstraint):
 -- las tarjetas conservan su proporción en cualquier pantalla y el canvas crece solo.
 local function buildRow(index: number, row: ShopConfig.Row)
+	local gap = Style.Layout.CardGap
 	local count = #row.Items
 	local width = row.Width or 1
-	local cardWidth = (width - CARD_GAP * (count - 1)) / count
+	local cardWidth = (width - gap * (count - 1)) / count
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Row" .. index
@@ -413,7 +591,7 @@ local function buildRow(index: number, row: ShopConfig.Row)
 	layout.FillDirection = Enum.FillDirection.Horizontal
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(CARD_GAP, 0)
+	layout.Padding = UDim.new(gap, 0)
 	layout.Parent = frame
 
 	for order, itemId in row.Items do
@@ -466,9 +644,9 @@ local function bindCanvas()
 	content.AutomaticCanvasSize = Enum.AutomaticSize.None
 	local function fit()
 		local width = content.AbsoluteSize.X
-		local gap = math.floor(width * ROW_GAP)
-		local side = math.floor(width * SIDE_PADDING)
-		local edge = math.floor(width * EDGE_PADDING)
+		local gap = math.floor(width * Style.Layout.RowGap)
+		local side = math.floor(width * Style.Layout.SidePadding)
+		local edge = math.floor(width * Style.Layout.EdgePadding)
 		layout.Padding = UDim.new(0, gap)
 		if padding then
 			padding.PaddingLeft = UDim.new(0, side)
@@ -484,7 +662,8 @@ local function bindCanvas()
 end
 
 local function setBlur(enabled: boolean)
-	TweenService:Create(blur, BLUR_TWEEN, { Size = if enabled then BLUR_SIZE else 0 }):Play()
+	local info = TweenInfo.new(Style.Blur.Duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(blur, info, { Size = if enabled then Style.Blur.Size else 0 }):Play()
 end
 
 -- ─── Init ───────────────────────────────────────────────────────────────────────
@@ -510,11 +689,31 @@ function ShopController.Init()
 	blur.Size = 0
 	blur.Parent = Lighting
 
-	-- El CloseButton del Header lo conecta UIManager solo.
-	UIManager.Register(WINDOW_NAME, main)
+	for index, soundId in ShopConfig.Sounds.Open do
+		local sound = UIEffects.makeSound("ShopOpen" .. index, soundId, ShopConfig.Sounds.Volume)
+		if sound then
+			table.insert(openSounds, sound)
+		end
+	end
+	task.spawn(function()
+		local ok, err = pcall(ContentProvider.PreloadAsync, ContentProvider, openSounds)
+		if not ok then
+			DebugConfig.warn("[ShopController] No se pudieron precargar los sonidos: " .. tostring(err))
+		end
+	end)
+
+	-- El CloseButton del Header lo conecta UIManager solo. Main tiene AnchorPoint
+	-- 0.5, 0.5: la apertura crece desde el centro de la pantalla.
+	UIManager.Register(WINDOW_NAME, main, {
+		HiddenScale = Style.Open.FromScale,
+		OpenDuration = Style.Open.Duration,
+	})
 	UIManager.OnOpened(WINDOW_NAME, function()
 		content.CanvasPosition = Vector2.zero
 		setBlur(true)
+		for _, sound in openSounds do
+			UIEffects.playOneShot(sound)
+		end
 	end)
 	UIManager.OnClosed(WINDOW_NAME, function()
 		setBlur(false)

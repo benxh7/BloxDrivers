@@ -57,6 +57,7 @@ StarterPlayerScripts         (src/Client)
 │   ├── VotingMapController
 │   ├── TopbarController
 │   ├── NPCLookController, NPCZoneController
+│   ├── SimulatorCircleController   lasers de los aros del lobby
 │   └── _TemplateController  plantilla para copiar (ignorada por ClientMain)
 ├── Components
 │   └── MapVoteBoard         vista reutilizable de la votación (sin uso todavía)
@@ -98,6 +99,7 @@ StarterGui                   (src/StarterGui)
 | `Controllers/TopbarController.luau` | Íconos del topbar. Hoy: dos íconos de debug (solo Studio) para la votación real y la simulada. |
 | `Controllers/NPCZoneController.luau` | Pisar el aro de un NPC abre la ventana `Gui` de su Config vía `UIManager.Open`. |
 | `Controllers/NPCLookController.luau` | Los NPCs giran a mirar al jugador local. |
+| `Controllers/SimulatorCircleController.luau` | Lasers (Beams) que suben y bajan en el borde de cada aro de `Workspace.SimulatorCircles`. Ajustes en `SimulatorCircleConfig` o por Attribute en cada aro. |
 | `Controllers/_TemplateController.luau` | Plantilla comentada para una GUI nueva. |
 | `Utils/UIEffects.luau` | `popIn`, `popOut`, `popButton`, `bindButton` (click + pop + callback), sonidos, `findChild`. |
 | `Utils/UITemplates.luau` | `UITemplates.get(name)` / `UITemplates.clone(name)`. |
