@@ -1,0 +1,79 @@
+-- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > Signal (ModuleScript)
+--
+-- Señal mínima estilo RBXScriptSignal (Connect / Once / Fire / Disconnect) para que
+-- los módulos se avisen cosas entre sí sin BindableEvents (que copian las tablas y
+-- no dejan pasar funciones). Cada listener corre en su propio hilo: si uno falla,
+-- los demás igual se ejecutan.
+--
+--   local changed = Signal.new()
+--   local conn = changed:Connect(function(value) print(value) end)
+--   changed:Fire(10)
+--   conn:Disconnect()
+local Signal = {}
+Signal.__index = Signal
+
+export type Connection = {
+	Connected: boolean,
+	Disconnect: (self: Connection) -> (),
+}
+
+export type Signal<T...> = {
+	Connect: (self: Signal<T...>, callback: (T...) -> ()) -> Connection,
+	Once: (self: Signal<T...>, callback: (T...) -> ()) -> Connection,
+	Fire: (self: Signal<T...>, T...) -> (),
+	DisconnectAll: (self: Signal<T...>) -> (),
+}
+
+type Listener = { Connected: boolean, callback: (...any) -> (), signal: any }
+
+local Connection = {}
+Connection.__index = Connection
+
+function Connection:Disconnect()
+	if not self.Connected then
+		return
+	end
+	self.Connected = false
+	local listeners = self.signal._listeners
+	local index = table.find(listeners, self)
+	if index then
+		table.remove(listeners, index)
+	end
+end
+
+function Signal.new(): Signal<...any>
+	return setmetatable({ _listeners = {} :: { Listener } }, Signal) :: any
+end
+
+function Signal:Connect(callback: (...any) -> ()): Connection
+	local connection = setmetatable({ Connected = true, callback = callback, signal = self }, Connection)
+	table.insert(self._listeners, connection)
+	return connection :: any
+end
+
+function Signal:Once(callback: (...any) -> ()): Connection
+	local connection
+	connection = self:Connect(function(...)
+		connection:Disconnect()
+		callback(...)
+	end)
+	return connection
+end
+
+function Signal:Fire(...: any)
+	-- Se itera una copia: un listener que se desconecta durante el Fire no corre el índice.
+	for _, listener in table.clone(self._listeners) do
+		if listener.Connected then
+			task.spawn(listener.callback, ...)
+		end
+	end
+end
+
+function Signal:DisconnectAll()
+	for _, listener in self._listeners do
+		listener.Connected = false
+	end
+	table.clear(self._listeners)
+end
+
+return Signal

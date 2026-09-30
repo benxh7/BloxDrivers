@@ -1,17 +1,19 @@
+-- Ubicación en Studio: ServerScriptService > Services > MapVote > MapVoteService (ModuleScript)
+--
+-- Votación de mapa, autoridad del servidor. El catálogo sale de ServerStorage.Maps
+-- (nombre = folder, imagen = su value `Image`); como ServerStorage no se replica, viaja
+-- al cliente por el bus UpdateUI. Pareja de VotingMapController (cliente).
+--
+-- Desacoplado de rondas: `runVoteWindow(duration)` corre la ventana entera. Llamalo
+-- desde donde quieras abrir una votación (ej. entre carreras), desde una corrutina.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
-local GameRemotes = require(ReplicatedStorage.Remotes.GameRemotes)
-local DebugConfig = require(ReplicatedStorage.DebugConfig)
-local VotingMapConfig = require(ReplicatedStorage.VotingMapConfig)
+local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
+local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
+local VotingMapConfig = require(ReplicatedStorage:WaitForChild("VotingMapConfig"))
 
--- El catálogo sale de ServerStorage.Maps: nombre = folder, imagen = su value
--- `Image`. Como ServerStorage no se replica, viaja al cliente por la red.
---
--- Traído de UBG y desacoplado de su GameRoundSystem: acá `runVoteWindow` manda
--- directo por GameRemotes.fireAll en vez de pasar por un bus de ronda. Llamalo
--- desde donde quieras abrir una votación (ej. entre carreras).
 local MapVoteService = {}
 
 MapVoteService.VOTE_DURATION = 15
@@ -21,6 +23,12 @@ local MAPS_FOLDER_NAME = "Maps" -- ServerStorage.Maps
 local IMAGE_VALUE_NAMES = { "Image", "ImageID", "ImageId", "Icon", "Thumbnail" }
 local MAX_OPTIONS = 3 -- cuántos mapas se muestran a la vez en la votación
 
+-- Cooldowns por jugador (segundos). Cada voto dispara un broadcast a TODOS los
+-- jugadores, así que sin límite un solo cliente podría inundar la red de todos.
+local CAST_VOTE_COOLDOWN = 0.25
+local REQUEST_STATE_COOLDOWN = 2
+local DEBUG_VOTE_COOLDOWN = 1
+
 type MapEntry = { Id: string, Name: string, Image: string }
 
 local votes: { [number]: string } = {} -- UserId -> mapId votado
@@ -28,7 +36,7 @@ local votes: { [number]: string } = {} -- UserId -> mapId votado
 local options: { MapEntry } = {}
 local optionById: { [string]: boolean } = {}
 
--- Solo se acepta votar con una votación abierta (la GUI vive dentro de MAP_VOTE).
+-- Solo se acepta votar con una votación abierta.
 local voteActive = false
 
 -- Staleness-guard de ventanas: si arranca una nueva, la corrutina de la vieja se
@@ -45,13 +53,17 @@ local function resolveImage(mapFolder: Instance): string
 			break
 		end
 	end
-	if not value then return "" end
+	if not value then
+		return ""
+	end
 	local raw = (value :: any).Value
 	if typeof(raw) == "number" then
-		return raw > 0 and ("rbxassetid://" .. math.floor(raw)) or ""
+		return if raw > 0 then "rbxassetid://" .. math.floor(raw) else ""
 	elseif typeof(raw) == "string" then
 		local s = (raw:gsub("%s+", ""))
-		if s == "" or s == "0" then return "" end
+		if s == "" or s == "0" then
+			return ""
+		end
 		if s:match("^rbxassetid://") or s:match("^rbxthumb://") or s:match("^http") then
 			return s
 		end
@@ -63,7 +75,9 @@ end
 local function scanAllMaps(): { MapEntry }
 	local all = {}
 	local folder = ServerStorage:FindFirstChild(MAPS_FOLDER_NAME)
-	if not folder then return all end
+	if not folder then
+		return all
+	end
 	for _, mapFolder in folder:GetChildren() do
 		table.insert(all, {
 			Id = mapFolder.Name,
@@ -75,17 +89,15 @@ local function scanAllMaps(): { MapEntry }
 end
 
 local function pickOptions(all: { MapEntry }): { MapEntry }
-	if #all <= MAX_OPTIONS then return all end
+	if #all <= MAX_OPTIONS then
+		return all
+	end
 	local shuffled = table.clone(all)
 	for i = #shuffled, 2, -1 do
 		local j = math.random(i)
 		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 	end
-	local picked = {}
-	for i = 1, MAX_OPTIONS do
-		picked[i] = shuffled[i]
-	end
-	return picked
+	return table.move(shuffled, 1, MAX_OPTIONS, 1, {})
 end
 
 local function buildOptions()
@@ -120,7 +132,7 @@ local function buildState(): { [string]: { number } }
 end
 
 local function pushAll()
-	GameRemotes.fireAll("mapVoteState", buildState())
+	Remotes.fireAll("mapVoteState", buildState())
 end
 
 -- Abre una votación nueva: re-sortea las opciones, limpia los votos y manda
@@ -130,7 +142,7 @@ function MapVoteService.startVote(): { MapEntry }
 	buildOptions()
 	voteActive = true
 
-	GameRemotes.fireAll("mapVoteCatalog", options)
+	Remotes.fireAll("mapVoteCatalog", options)
 	pushAll()
 	return options
 end
@@ -139,7 +151,9 @@ end
 -- azar entre los empatados. Sin votos (o sin mapas), uno al azar de las opciones.
 function MapVoteService.finishVote(): string?
 	voteActive = false
-	if #options == 0 then return nil end
+	if #options == 0 then
+		return nil
+	end
 
 	local counts: { [string]: number } = {}
 	for _, mapId in votes do
@@ -165,6 +179,12 @@ function MapVoteService.isVoteActive(): boolean
 	return voteActive
 end
 
+local function abortWindow(): nil
+	MapVoteService.finishVote()
+	Remotes.fireAll("mapVoteEnd", nil)
+	return nil
+end
+
 -- BLOQUEA hasta terminar: llamar desde una corrutina. `shouldAbort` se consulta en
 -- CADA tick, y al cortar igual avisa el cierre o la GUI queda abierta.
 function MapVoteService.runVoteWindow(duration: number, shouldAbort: (() -> boolean)?): string?
@@ -172,65 +192,71 @@ function MapVoteService.runVoteWindow(duration: number, shouldAbort: (() -> bool
 	local myGeneration = windowGeneration
 
 	MapVoteService.startVote()
-	GameRemotes.fireAll("mapVoteStart", duration)
+	Remotes.fireAll("mapVoteStart", duration)
 
 	-- Espera a que las cards terminen de entrar en el cliente antes de contar: si no, el
-	-- tiempo baja mientras todavía caen y el cliente (que lo congela hasta tenerlas)
-	-- mostraría un salto. Deriva de VotingMapConfig, igual que la animación del cliente.
+	-- tiempo baja mientras todavía caen. Deriva de VotingMapConfig, igual que el cliente.
 	task.wait(VotingMapConfig.entranceDuration(#options) + VotingMapConfig.EntranceBuffer)
-	if windowGeneration ~= myGeneration then return nil end
-	if shouldAbort and shouldAbort() then
-		MapVoteService.finishVote()
-		GameRemotes.fireAll("mapVoteEnd", nil)
+	if windowGeneration ~= myGeneration then
 		return nil
+	end
+	if shouldAbort and shouldAbort() then
+		return abortWindow()
 	end
 
 	for timeLeft = duration, 1, -1 do
 		-- Otra ventana arrancó: la vieja se retira EN SILENCIO, sin cerrarle la GUI a la nueva.
-		if windowGeneration ~= myGeneration then return nil end
-		if shouldAbort and shouldAbort() then
-			MapVoteService.finishVote()
-			GameRemotes.fireAll("mapVoteEnd", nil)
+		if windowGeneration ~= myGeneration then
 			return nil
 		end
-		GameRemotes.fireAll("mapVoteTick", timeLeft)
+		if shouldAbort and shouldAbort() then
+			return abortWindow()
+		end
+		Remotes.fireAll("mapVoteTick", timeLeft)
 		task.wait(1)
 	end
 
-	if windowGeneration ~= myGeneration then return nil end
+	if windowGeneration ~= myGeneration then
+		return nil
+	end
 
 	local winner = MapVoteService.finishVote()
-	GameRemotes.fireAll("mapVoteEnd", winner)
+	Remotes.fireAll("mapVoteEnd", winner)
 
 	-- Le da aire a la celebración del ganador antes de devolver: quien llama puede
 	-- encadenar la siguiente acción (ej. cargar el mapa) justo después.
 	task.wait(VotingMapConfig.celebrationDuration())
-	if windowGeneration ~= myGeneration then return nil end
+	if windowGeneration ~= myGeneration then
+		return nil
+	end
 	return winner
 end
 
-GameRemotes.CastMapVote.OnServerEvent:Connect(function(player: Player, mapId: any)
+local function onCastVote(player: Player, mapId: any)
 	-- Valida el mapId contra las opciones mostradas, nunca confía en el cliente.
-	if not voteActive then return end
-	if typeof(mapId) ~= "string" or not optionById[mapId] then return end
+	if not voteActive then
+		return
+	end
+	if typeof(mapId) ~= "string" or not optionById[mapId] then
+		return
+	end
 
 	-- Re-votar el mismo mapa lo desvota; votar otro mueve el voto.
-	if votes[player.UserId] == mapId then
-		votes[player.UserId] = nil
-	else
-		votes[player.UserId] = mapId
-	end
+	votes[player.UserId] = if votes[player.UserId] == mapId then nil else mapId
 	pushAll()
-end)
+end
 
-GameRemotes.RequestMapVoteState.OnServerEvent:Connect(function(player: Player)
-	GameRemotes.fireTo(player, "mapVoteCatalog", getOptions())
-	GameRemotes.fireTo(player, "mapVoteState", buildState())
-end)
+local function onRequestState(player: Player)
+	Remotes.fireTo(player, "mapVoteCatalog", getOptions())
+	Remotes.fireTo(player, "mapVoteState", buildState())
+end
 
--- Corre la misma ventana real de votación sin depender de ninguna ronda.
-GameRemotes.DebugMapVote.OnServerEvent:Connect(function(player: Player)
-	if not DebugConfig.CHEATS_ENABLED then return end
+-- Corre la misma ventana real de votación sin depender de ninguna ronda. El gate del
+-- servidor es obligatorio: el remote existe aunque el botón no esté en pantalla.
+local function onDebugVote(player: Player)
+	if not DebugConfig.CHEATS_ENABLED then
+		return
+	end
 	if voteActive then
 		DebugConfig.print("[MapVoteService] Debug: ya hay una votación abierta, se ignora")
 		return
@@ -241,13 +267,19 @@ GameRemotes.DebugMapVote.OnServerEvent:Connect(function(player: Player)
 		local winner = MapVoteService.runVoteWindow(MapVoteService.VOTE_DURATION)
 		DebugConfig.print("[MapVoteService] Debug: ganó " .. tostring(winner))
 	end)
-end)
+end
 
-Players.PlayerRemoving:Connect(function(player: Player)
-	if votes[player.UserId] then
-		votes[player.UserId] = nil
-		pushAll()
-	end
-end)
+function MapVoteService.Init()
+	Remotes.onServerEvent("CastMapVote", onCastVote, CAST_VOTE_COOLDOWN)
+	Remotes.onServerEvent("RequestMapVoteState", onRequestState, REQUEST_STATE_COOLDOWN)
+	Remotes.onServerEvent("DebugMapVote", onDebugVote, DEBUG_VOTE_COOLDOWN)
+
+	Players.PlayerRemoving:Connect(function(player: Player)
+		if votes[player.UserId] then
+			votes[player.UserId] = nil
+			pushAll()
+		end
+	end)
+end
 
 return MapVoteService

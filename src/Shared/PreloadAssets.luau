@@ -11,8 +11,8 @@ local PreloadAssets = {}
 -- cada config/catálogo nuevo que tenga assets (imágenes, sonidos, animaciones).
 local SOURCES: { { any } } = {
 	{ ReplicatedStorage, "TopbarConfig" }, -- íconos del topbar (se crean en runtime)
-	{ ReplicatedStorage, "UIHelpers" }, -- sonido de click de los botones
 	{ ReplicatedStorage, "WaveTransitionConfig" }, -- sonido de la ola de cierre del menú
+	-- El click de UI NO va acá: UIEffects (StarterPlayerScripts) lo precarga solo.
 }
 
 -- Los catálogos son tablas de tablas: el tope corta cualquier estructura rara.

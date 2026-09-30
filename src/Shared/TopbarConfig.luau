@@ -1,6 +1,8 @@
--- Identidad + layout de CADA ícono del topbar. Cada script llama
+-- Ubicación en Studio: ReplicatedStorage > TopbarConfig (ModuleScript)
+--
+-- Identidad + layout de CADA ícono del topbar. TopbarController llama
 -- `TopbarConfig.apply(icon, "Nombre")`: acá va lo que DEFINE al ícono (arte, texto,
--- orden, lado), el behavior queda en el script de cada sistema.
+-- orden, lado), el comportamiento queda en TopbarController.
 --
 -- Campos: `align` "Left"/"Right", `order` ascendente dentro de cada lado, `name`
 -- (id interno + de-dup), e `image`/`caption`/`label` opcionales.

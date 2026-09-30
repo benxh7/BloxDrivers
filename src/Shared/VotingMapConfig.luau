@@ -1,12 +1,15 @@
--- Tiempos de la ENTRADA de las cards de la votación. Único lugar tuneable: lo lee el
--- cliente (VotingMapClient) para animar la caída, y MapVoteService para RETRASAR el
--- conteo justo esa duración — así el tiempo no baja mientras los mapas todavía entran
--- (mismo criterio que WaveTransitionConfig: un solo lugar, los dos lados derivan de acá).
+-- Ubicación en Studio: ReplicatedStorage > VotingMapConfig (ModuleScript)
+--
+-- Tiempos de la votación de mapa. Único lugar tuneable: lo lee el cliente
+-- (VotingMapController) para animar, y MapVoteService para RETRASAR el conteo justo
+-- esa duración — así el tiempo no baja mientras los mapas todavía entran (mismo
+-- criterio que WaveTransitionConfig: un solo lugar, los dos lados derivan de acá).
 local VotingMapConfig = {}
 
--- Cada card cae desde DropDistance px por encima de su lugar (Back Out = "boing"), una
--- tras otra cada DropStagger seg.
-VotingMapConfig.DropDistance = 70
+-- Cada card cae desde DropDistance ALTOS DE CARD por encima de su lugar (Back Out =
+-- "boing"), una tras otra cada DropStagger seg. En altos de card y no en píxeles: se
+-- ve igual en cualquier resolución.
+VotingMapConfig.DropDistance = 0.6
 VotingMapConfig.DropDuration = 0.45
 VotingMapConfig.DropStagger = 0.35
 

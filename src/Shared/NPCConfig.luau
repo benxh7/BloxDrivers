@@ -34,8 +34,8 @@ NPCConfig.Defaults = {
 	-- Radio en studs de la zona que le abre la GUI al jugador. 0 = sale del aro que lo
 	-- contiene, que es lo que se quiere casi siempre: la zona coincide con el dibujo.
 	ZoneRadius = 0,
-	-- Nombre del ícono del topbar que se abre al entrar (el `name` de TopbarConfig).
-	-- "" = este NPC no abre nada.
+	-- Ventana de UIManager que se abre al entrar al aro (ej. "Shop"), la misma que
+	-- registra su controller. "" = este NPC no abre nada.
 	Gui = "",
 
 	-- Alto del cartel sobre la cabeza.

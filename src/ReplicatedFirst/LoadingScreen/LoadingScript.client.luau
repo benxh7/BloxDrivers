@@ -14,7 +14,8 @@ local MenuCamera = require(script.Parent:WaitForChild("MenuCamera"))
 local AnimationPreloader = require(script.Parent:WaitForChild("AnimationPreloader"))
 local WaveTransition = require(script.Parent:WaitForChild("WaveTransition"))
 local SoundService = game:GetService("SoundService")
-local setLoadingComplete = ReplicatedStorage:WaitForChild("GameRemotes"):WaitForChild("SetLoadingComplete") :: RemoteEvent
+local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
+local setLoadingComplete = Remotes.event("SetLoadingComplete")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")

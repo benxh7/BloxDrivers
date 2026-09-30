@@ -1,0 +1,193 @@
+-- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Controllers > UIManager (ModuleScript)
+--
+-- Maneja TODAS las ventanas del juego (Shop, Inventory, ...). Regla: una sola ventana
+-- abierta a la vez; abrir una cierra la anterior. Los controllers registran el Frame
+-- `Main` de su GUI y nunca tocan `.Visible` a mano.
+--
+--   UIManager.Register("Shop", shopGui.Main)
+--   UIManager.Open("Shop") / Close("Shop") / Toggle("Shop") / CloseAll() / IsOpen("Shop")
+--   UIManager.OnOpened("Shop", function() scroll.CanvasPosition = Vector2.zero end)
+--
+-- NO se registran acá: el HUD (siempre visible) ni los popups/overlays que maneja el
+-- servidor (ej. VotingMapGui), que tienen su propio ciclo.
+--
+-- Convención: si el Main tiene un botón llamado `CloseButton` (en cualquier nivel),
+-- se conecta solo a Close(name).
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Utils = script.Parent.Parent:WaitForChild("Utils")
+local UIEffects = require(Utils:WaitForChild("UIEffects"))
+local Signal = require(Utils:WaitForChild("Signal"))
+local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
+
+export type WindowOptions = {
+	-- false = sin popIn/popOut (la ventana solo se muestra/oculta). Default true.
+	Animate: boolean?,
+}
+
+type Window = {
+	frame: GuiObject,
+	animate: boolean,
+	closeConnection: RBXScriptConnection?,
+}
+
+local UIManager = {}
+
+-- Se disparan con el nombre de la ventana. Preferí OnOpened/OnClosed (filtran por nombre).
+UIManager.Opened = Signal.new()
+UIManager.Closed = Signal.new()
+
+local GUI_WAIT_TIMEOUT = 10
+local CLOSE_BUTTON_NAME = "CloseButton"
+
+local windows: { [string]: Window } = {}
+local current: string? = nil
+local playerGui: PlayerGui? = nil
+
+local function getPlayerGui(): PlayerGui
+	if not playerGui then
+		playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
+	end
+	return playerGui :: PlayerGui
+end
+
+function UIManager.Init()
+	getPlayerGui()
+end
+
+-- Espera una ScreenGui de StarterGui ya clonada en PlayerGui. Pasado el timeout avisa
+-- (casi siempre: el nombre no coincide con el de Studio) pero SIGUE esperando: las
+-- ScreenGuis recién se clonan cuando aparece el personaje, y en un arranque lento eso
+-- tarda más que el timeout. Cada Init corre en su hilo, así que esperar no frena a nadie.
+function UIManager.WaitForGui(guiName: string, timeout: number?): ScreenGui?
+	local container = getPlayerGui()
+	local gui = container:WaitForChild(guiName, timeout or GUI_WAIT_TIMEOUT)
+	if not gui then
+		DebugConfig.warn(("[UIManager] '%s' todavía no está en PlayerGui, se sigue esperando"):format(guiName))
+		gui = container:WaitForChild(guiName)
+	end
+	if not gui:IsA("ScreenGui") then
+		DebugConfig.warn(("[UIManager] No se encontró la ScreenGui '%s' en PlayerGui"):format(guiName))
+		return nil
+	end
+	return gui
+end
+
+function UIManager.Register(name: string, mainFrame: GuiObject, options: WindowOptions?)
+	local previous = windows[name]
+	if previous then
+		DebugConfig.warn(("[UIManager] '%s' ya estaba registrada, se reemplaza"):format(name))
+		if previous.closeConnection then
+			previous.closeConnection:Disconnect()
+		end
+	end
+
+	local window: Window = {
+		frame = mainFrame,
+		animate = not (options and options.Animate == false),
+		closeConnection = nil,
+	}
+
+	local closeButton = mainFrame:FindFirstChild(CLOSE_BUTTON_NAME, true)
+	if closeButton and closeButton:IsA("GuiButton") then
+		window.closeConnection = UIEffects.bindButton(closeButton, function()
+			UIManager.Close(name)
+		end)
+	end
+
+	windows[name] = window
+	-- Si justo estaba abierta (re-registro), se respeta; si no, arranca oculta.
+	mainFrame.Visible = current == name
+end
+
+local function show(window: Window)
+	if window.animate then
+		UIEffects.popIn(window.frame)
+	else
+		window.frame.Visible = true
+	end
+end
+
+local function hide(window: Window)
+	if window.animate then
+		UIEffects.popOut(window.frame)
+	else
+		window.frame.Visible = false
+	end
+end
+
+-- Abre la ventana y cierra la que estuviera abierta. Devuelve false si no existe.
+function UIManager.Open(name: string): boolean
+	local window = windows[name]
+	if not window then
+		DebugConfig.warn(("[UIManager] Open('%s'): no hay ninguna ventana registrada con ese nombre"):format(name))
+		return false
+	end
+	if current == name then
+		return true
+	end
+
+	if current then
+		UIManager.Close(current)
+	end
+
+	current = name
+	show(window)
+	UIManager.Opened:Fire(name)
+	return true
+end
+
+function UIManager.Close(name: string)
+	if current ~= name then
+		return
+	end
+	current = nil
+	local window = windows[name]
+	if window then
+		hide(window)
+	end
+	UIManager.Closed:Fire(name)
+end
+
+function UIManager.Toggle(name: string)
+	if current == name then
+		UIManager.Close(name)
+	else
+		UIManager.Open(name)
+	end
+end
+
+function UIManager.CloseAll()
+	if current then
+		UIManager.Close(current)
+	end
+end
+
+function UIManager.IsOpen(name: string): boolean
+	return current == name
+end
+
+-- Nombre de la ventana abierta ahora (nil si no hay ninguna).
+function UIManager.GetOpen(): string?
+	return current
+end
+
+-- `callback()` corre cada vez que se abre `name`. Devuelve la conexión (Disconnect).
+function UIManager.OnOpened(name: string, callback: () -> ())
+	return UIManager.Opened:Connect(function(opened: string)
+		if opened == name then
+			callback()
+		end
+	end)
+end
+
+function UIManager.OnClosed(name: string, callback: () -> ())
+	return UIManager.Closed:Connect(function(closed: string)
+		if closed == name then
+			callback()
+		end
+	end)
+end
+
+return UIManager
