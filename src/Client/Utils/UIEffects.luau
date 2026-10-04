@@ -8,6 +8,7 @@ local SoundService = game:GetService("SoundService")
 local ContentProvider = game:GetService("ContentProvider")
 local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
 
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
@@ -17,10 +18,10 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Asset de UBG: si da error de permisos, resubirlo a esta cuenta.
-UIEffects.ClickSoundId = "rbxassetid://103282937573040"
+UIEffects.ClickSoundId = "rbxassetid://139719503904449"
 UIEffects.ClickVolume = 0.5
 -- false = bindButton no suena al clickear.
-UIEffects.ClickSoundEnabled = false
+UIEffects.ClickSoundEnabled = true
 
 -- Suena en bindHover sobre un GuiButton.
 UIEffects.HoverSoundId = "rbxassetid://139800881181209"
@@ -269,6 +270,18 @@ function UIEffects.popOut(frame: GuiObject, onHidden: (() -> ())?, hiddenScale: 
 			onHidden()
 		end
 	end)
+end
+
+-- BlurEffect propio en Lighting (el nombre lo buscan otros, ej. "ShopBlur" en ShopPurchaseEffect).
+function UIEffects.makeBlur(name: string, size: number, duration: number): (enabled: boolean) -> ()
+	local blur = Instance.new("BlurEffect")
+	blur.Name = name
+	blur.Size = 0
+	blur.Parent = Lighting
+	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	return function(enabled: boolean)
+		TweenService:Create(blur, info, { Size = if enabled then size else 0 }):Play()
+	end
 end
 
 -- Con timeout y aviso: un nombre mal escrito en Studio no cuelga el script en silencio.

@@ -41,9 +41,12 @@ ReplicatedStorage            (src/Shared)
 ServerScriptService          (src/Server)
 ├── Main                     Script: crea Remotes y arranca todos los *Service
 └── Services
-    ├── Loading/AssetManifestService
+    ├── Codes/CodesService (+ CodesConfig, privado del servidor)
+    ├── Loading/AssetManifestService, LoadingService
     ├── MapVote/MapVoteService
-    └── Npc/NPCAnimationService, NPCBillboardService
+    ├── Npc/NPCAnimationService, NPCBillboardService
+    ├── Shop/ShopService
+    └── Spectator/SpectatorService (+ ReportConfig, ReportPolicy)
 
 ServerStorage                (src/ServerStorage)
 ├── EasyProfileStore         wrapper de ProfileStore (persistencia)
@@ -53,7 +56,9 @@ StarterPlayerScripts         (src/Client)
 ├── ClientMain               LocalScript: arranca todos los controllers
 ├── Controllers
 │   ├── UIManager            ventanas (una abierta a la vez)
-│   ├── HUDController
+│   ├── HUDController, CurrencyController
+│   ├── ShopController, SettingsController, CodesController
+│   ├── DailyController, PlaytimeController, SpectatorController
 │   ├── VotingMapController
 │   ├── TopbarController
 │   ├── NPCLookController, NPCZoneController
@@ -65,12 +70,18 @@ StarterPlayerScripts         (src/Client)
     ├── UIEffects            popIn/popOut, pop de botón, sonidos, findChild
     ├── UITemplates          acceso a ReplicatedStorage.UITemplates
     ├── Signal               señales entre módulos
+    ├── Notifications        toasts (plantilla UITemplates.ToastMessage)
+    ├── MobileHUDLayout      reacomodo del HUD en táctil
+    ├── ShopPurchaseEffect   animación previa al prompt de compra
+    ├── WindowLayout         tamaño de ventana y de su Header según la pantalla
     └── VoterAvatars         fotitos de votantes (compartido por las vistas de votación)
 
-StarterGui                   (src/StarterGui)
+StarterGui                   (src/StarterGui: solo init.meta.json por GUI)
 ├── HUD                      siempre visible, DisplayOrder 0
-├── [Nombre]Gui              ventanas, DisplayOrder 10
-└── VotingMapGui             popup del servidor, DisplayOrder 20
+├── Shop/Settings/Codes/DailyRewards/PlaytimeRewardsGui   ventanas, DisplayOrder 10
+├── VotingMapGui             popup del servidor, DisplayOrder 20
+├── SpectatorGui             controles del espectador, DisplayOrder 25
+└── ShopPurchaseGui          efecto de compra, DisplayOrder 150
 ```
 
 ### Cómo arranca
@@ -92,7 +103,7 @@ StarterGui                   (src/StarterGui)
 | Archivo | Rol |
 |---|---|
 | `ClientMain.client.luau` | Carga automática de controllers (UIManager primero, ignora `_*`). |
-| `Controllers/UIManager.luau` | `Register`, `Open`, `Close`, `Toggle`, `CloseAll`, `IsOpen`, `GetOpen`, `WaitForGui`. Una sola ventana a la vez; anima con `UIEffects.popIn/popOut`. Señales `Opened`/`Closed` y helpers `OnOpened(name, fn)`/`OnClosed(name, fn)`. Si el `Main` tiene un `CloseButton`, lo conecta solo. |
+| `Controllers/UIManager.luau` | `Register`, `Open`, `Close`, `Toggle`, `CloseAll`, `IsOpen`, `GetOpen`, `WaitForGui`. Una sola ventana a la vez; anima con `UIEffects.popIn/popOut`. Señales `Opened`/`Closed` y helpers `OnOpened(name, fn)`/`OnClosed(name, fn)`. Si el `Main` tiene un `CloseButton`, lo conecta solo. Opción `CloseOnButtonB` para cerrar con el B del mando. |
 | `Controllers/ShopController.luau` | Tienda (`ShopGui`, ventana "Shop"): una tarjeta `UITemplates.ShopCard` por item de `ShopConfig.Rows`. Compra por `RequestShopPurchase` (solo el Id); VIEW → `UIManager.Open(item.ViewTarget)`. |
 | `Controllers/HUDController.luau` | Tabla `BUTTONS = { ShopButton = "Shop", ... }` que mapea botones del HUD a `UIManager.Toggle`. |
 | `Controllers/VotingMapController.luau` | Panel de votación de mapa (popup del servidor, no se registra en UIManager). Incluye el mock local de debug. |
@@ -101,7 +112,7 @@ StarterGui                   (src/StarterGui)
 | `Controllers/NPCLookController.luau` | Los NPCs giran a mirar al jugador local. |
 | `Controllers/SimulatorCircleController.luau` | Lasers (Beams) que suben y bajan en el borde de cada aro de `Workspace.SimulatorCircles`. Ajustes en `SimulatorCircleConfig` o por Attribute en cada aro. |
 | `Controllers/_TemplateController.luau` | Plantilla comentada para una GUI nueva. |
-| `Utils/UIEffects.luau` | `popIn`, `popOut`, `popButton`, `bindButton` (click + pop + callback), sonidos, `findChild`. |
+| `Utils/UIEffects.luau` | `popIn`, `popOut`, `popButton`, `bindButton` (click + pop + callback), `bindHover`, `makeBlur` (blur de ventana), sonidos, `findChild`. |
 | `Utils/UITemplates.luau` | `UITemplates.get(name)` / `UITemplates.clone(name)`. |
 | `Utils/Signal.luau` | Señal ligera (`Connect`, `Once`, `Fire`, `Disconnect`). |
 
@@ -120,6 +131,8 @@ StarterGui                   (src/StarterGui)
 | `Main.server.luau` | Arranque del servidor (Remotes → Services). |
 | `Services/MapVote/MapVoteService.luau` | Autoridad de la votación: valida cada voto y aplica rate limit. `runVoteWindow(duration)` corre una ventana completa. |
 | `Services/Loading/AssetManifestService.luau` | Publica los asset IDs de ServerStorage para la pantalla de carga. |
+| `Services/Loading/LoadingService.luau` | Marca al jugador con el atributo `LoadingComplete` cuando aprieta PLAY/SKIP (`LoadingService.IsLoaded`). |
+| `Services/Spectator/SpectatorService.luau` | Espectador y reportes. El webhook de Discord sale del secreto `DiscordReportWebhook` (Secrets de Roblox), nunca del código. |
 | `Services/Shop/ShopService.luau` | Autoridad de la tienda: prompts, `ProcessReceipt` (otorga primero vía `RegisterGrant`, después confirma) y Game Passes (`OwnsPass`). |
 | `Services/Npc/*` | Idle y cartel de los NPCs. |
 

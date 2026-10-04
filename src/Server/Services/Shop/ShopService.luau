@@ -72,6 +72,7 @@ local function onPurchaseRequest(player: Player, itemId: any)
 	end
 	local item = ShopConfig.get(itemId)
 	if not item or not item.ProductId or item.ProductId <= 0 then
+		Remotes.fireTo(player, "shopPromptFailed", itemId)
 		return
 	end
 
@@ -80,12 +81,14 @@ local function onPurchaseRequest(player: Player, itemId: any)
 		ok, err = pcall(MarketplaceService.PromptProductPurchase, MarketplaceService, player, item.ProductId)
 	elseif item.Kind == "GamePass" then
 		if ShopService.OwnsPass(player, itemId) then
+			Remotes.fireTo(player, "shopPromptFailed", itemId)
 			return
 		end
 		ok, err = pcall(MarketplaceService.PromptGamePassPurchase, MarketplaceService, player, item.ProductId)
 	else
 		return
 	end
+	Remotes.fireTo(player, if ok then "shopPromptOpened" else "shopPromptFailed", itemId)
 	if not ok then
 		DebugConfig.warn(("[ShopService] No se pudo abrir el prompt de '%s': %s"):format(itemId, tostring(err)))
 	end

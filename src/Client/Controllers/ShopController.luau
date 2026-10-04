@@ -2,20 +2,26 @@
 -- Ventana "Shop": una tarjeta UITemplates.ShopCard por item de ShopConfig.Rows. Todo lo
 -- ajustable está en ShopConfig; la forma de las capas, en la plantilla de Studio.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
 
 local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local Utils = script.Parent.Parent:WaitForChild("Utils")
 local UIEffects = require(Utils:WaitForChild("UIEffects"))
 local UITemplates = require(Utils:WaitForChild("UITemplates"))
+local PurchaseEffect = require(Utils:WaitForChild("ShopPurchaseEffect"))
+local WindowLayout = require(Utils:WaitForChild("WindowLayout"))
 local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("ShopConfig"))
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
 local ShopController = {}
+local spinTweens = {}
 
 local Style = ShopConfig.Style
 
@@ -30,12 +36,13 @@ local MIN_STROKE_FACTOR = 0.5
 
 local CORNER_LAYERS = { Ring = true, Background = true, Outline = true, InnerLine = true }
 
-local ACTIONS_DEFAULT = { Position = UDim2.fromScale(0.97, 0.95), Size = UDim2.fromScale(0.62, 0.22) }
-local ACTIONS_FEATURED = { Position = UDim2.fromScale(0.965, 0.95), Size = UDim2.fromScale(0.72, 0.25) }
+local ACTIONS_DEFAULT = { Position = UDim2.fromScale(0.96, 0.95), Size = UDim2.fromScale(0.56, 0.2) }
+local ACTIONS_FEATURED = { Position = UDim2.fromScale(0.96, 0.95), Size = UDim2.fromScale(0.58, 0.23) }
 local ACTIONS_BANNER = { Position = UDim2.fromScale(0.975, 0.93), Size = UDim2.fromScale(0.37, 0.3) }
 local BUY_ASPECT = 2.5
 local VIEW_ASPECT = 2.4
-local PRICE_LAYOUT = { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.9, 0.86) }
+local PRICE_LAYOUT =
+	{ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.9, 0.86) }
 -- Glifo de Robux de las fuentes de Roblox: se dibuja como texto, con el mismo borde.
 local ROBUX_GLYPH = utf8.char(0xE002)
 local BANNER_TITLE = { Position = UDim2.fromScale(0.03, 0.04), Size = UDim2.fromScale(0.62, 0.27) }
@@ -43,9 +50,15 @@ local BANNER_DESCRIPTION = { Position = UDim2.fromScale(0.03, 0.31), Size = UDim
 local RIGHT_DESCRIPTION = { Position = UDim2.fromScale(0.42, 0.2), Size = UDim2.fromScale(0.56, 0.42) }
 local SUBTITLE_DESCRIPTION_Y = 0.46
 
+local player = Players.LocalPlayer
+local gui: ScreenGui
 local main: GuiObject
 local content: ScrollingFrame
-local blur: BlurEffect
+local giftOverlay: Frame?
+local giftList: ScrollingFrame?
+local giftEmpty: TextLabel?
+local giftItemId: string?
+local setBlur: (enabled: boolean) -> ()
 local openSounds: { Sound } = {}
 local owned: { [string]: boolean } = {}
 local cards: { [string]: GuiObject } = {}
@@ -56,24 +69,18 @@ local function strokeFactor(): number
 	return math.clamp(height / REFERENCE_HEIGHT, MIN_STROKE_FACTOR, 1)
 end
 
--- El grosor de diseño queda en el atributo BaseThickness.
+-- El marco diseñado en Studio conserva sus grosores. Solo los elementos marcados
+-- explícitamente como responsive se escalan con la altura de pantalla.
 local function scaleStrokes(root: Instance)
 	local factor = strokeFactor()
 	for _, stroke in root:GetDescendants() do
-		if stroke:IsA("UIStroke") then
+		if stroke:IsA("UIStroke") and stroke:GetAttribute("ResponsiveThickness") == true then
 			local base = stroke:GetAttribute("BaseThickness")
 			if typeof(base) ~= "number" then
 				base = stroke.Thickness
 				stroke:SetAttribute("BaseThickness", base)
 			end
 			stroke.Thickness = math.max(1, base * factor)
-			-- El Frame del aro se achica lo que engorda el trazo: queda pegado al borde negro.
-			if stroke:GetAttribute("Rim") and stroke.Parent and stroke.Parent:IsA("GuiObject") then
-				-- Entero: el Offset de Size no admite decimales.
-				stroke.Thickness = math.max(1, math.round(stroke.Thickness))
-				local rim = stroke.Thickness
-				stroke.Parent.Size = UDim2.new(1, -2 * rim, 1, -2 * rim)
-			end
 		end
 	end
 end
@@ -85,7 +92,11 @@ local function setGradient(object: Instance, colors: { Color3 })
 		gradient.Rotation = 90
 		gradient.Parent = object
 	end
-	gradient.Color = ColorSequence.new(colors[1], colors[2])
+	local points = {}
+	for index, color in colors do
+		table.insert(points, ColorSequenceKeypoint.new((index - 1) / math.max(1, #colors - 1), color))
+	end
+	gradient.Color = ColorSequence.new(points)
 end
 
 local function applyProps(object: Instance, props: { [string]: any })
@@ -168,45 +179,32 @@ end
 
 local function styleFrame(card: GuiObject, item: ShopConfig.Item)
 	applyCorners(card)
-
-	local outline = card:FindFirstChild("Outline")
-	local outlineStroke = outline and outline:FindFirstChildOfClass("UIStroke")
-	if outlineStroke then
-		outlineStroke.Thickness = Style.OutlineThickness
-		if item.Outline then
-			outlineStroke.Color = item.Outline
-		end
-	end
-
+	local outline = card.Outline:FindFirstChildOfClass("UIStroke")
+	outline.Thickness = Style.OutlineThickness
+	outline.Color = item.Outline or Color3.fromRGB(4, 4, 9)
+	local ring = card.Ring
 	local ringThickness = if item.Glow then item.RingThickness or Style.RingThickness else 0
-	local ring = card:FindFirstChild("Ring") :: Frame?
-	if ring then
-		ring.Visible = ringThickness > 0
-		local ringStroke = ring:FindFirstChildOfClass("UIStroke")
-		if ringStroke and item.Glow and ringThickness > 0 then
-			ringStroke.Color = item.Glow
-			ringStroke.Thickness = Style.OutlineThickness + ringThickness
-		end
-	end
-
+	ring.Visible = ringThickness > 0
+	ring.UIStroke.Color = item.Glow or Color3.new()
+	ring.UIStroke.Thickness = Style.OutlineThickness + ringThickness
 	buildGlow(card, item.Glow, Style.OutlineThickness + ringThickness)
-
-	local background = card:FindFirstChild("Background")
-	local innerLine = background and background:FindFirstChild("InnerLine") :: Frame?
-	if innerLine then
-		innerLine.Visible = item.Glow ~= nil
-		local innerStroke = innerLine:FindFirstChildOfClass("UIStroke")
-		if innerStroke and item.Glow then
-			innerStroke.Color = item.Glow:Lerp(Color3.new(1, 1, 1), Style.InnerLineLighten)
-		end
-	end
+	local inner = card.InnerBorder
+	-- El rim está adosado a la cara interior del outline, con la transparencia de Settings.
+	local rim = inner.Rim
+	rim.Transparency = StarterGui.SettingsGui.Main.InnerBorder.Rim.Transparency
+	rim.Color = Color3.new(1, 1, 1)
+	rim.Thickness = 6
+	inner.Size = UDim2.new(1, -6, 1, -6)
 end
 
 local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 	local background = card:FindFirstChild("Background")
 	if background then
 		-- El UIGradient de un CanvasGroup tiñe todo su contenido: con imagen va en blanco.
-		setGradient(background, if hasImage(item.Image) then { Color3.new(1, 1, 1), Color3.new(1, 1, 1) } else item.Color)
+		setGradient(
+			background,
+			if hasImage(item.Image) then { Color3.new(1, 1, 1), Color3.new(1, 1, 1) } else item.Color
+		)
 		local art = background:FindFirstChild("Art") :: ImageLabel?
 		if art then
 			art.Visible = hasImage(item.Image)
@@ -216,15 +214,11 @@ local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 		if rays then
 			rays.Visible = item.Rays == true
 		end
-		local pattern = background:FindFirstChild("Pattern") :: ImageLabel?
-		if pattern then
+		local pattern = background:FindFirstChild("Pattern")
+		if pattern and pattern:IsA("ImageLabel") then
 			pattern.Visible = item.Pattern ~= false
-			if item.PatternColor then
-				pattern.ImageColor3 = item.PatternColor
-			end
-			if item.PatternTransparency then
-				pattern.ImageTransparency = item.PatternTransparency
-			end
+			pattern.ImageColor3 = item.PatternColor or Color3.fromRGB(65, 65, 65)
+			pattern.ImageTransparency = item.PatternTransparency or 0.05
 		end
 		local titleBar = background:FindFirstChild("TitleBar") :: Frame?
 		if titleBar then
@@ -232,6 +226,29 @@ local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 		end
 	end
 
+	if item.SpinDecal and background then
+		local decal = card:FindFirstChild("SpinDecal")
+		if decal then
+			decal.Visible = true
+			decal.Image = ShopConfig.SpinDecal.Image
+			decal.ImageTransparency = ShopConfig.SpinDecal.Transparency
+			decal.Position = if item.IconLayout then item.IconLayout.Position else UDim2.fromScale(0.5, 0.55)
+			local tween = TweenService:Create(
+				decal,
+				TweenInfo.new(
+					ShopConfig.SpinDecal.SecondsPerTurn,
+					Enum.EasingStyle.Linear,
+					Enum.EasingDirection.InOut,
+					-1
+				),
+				{ Rotation = 360 }
+			)
+			table.insert(spinTweens, tween)
+			if UIManager.IsOpen(WINDOW_NAME) then
+				tween:Play()
+			end
+		end
+	end
 	local icon = card:FindFirstChild("Icon") :: ImageLabel?
 	if icon then
 		icon.Visible = hasImage(item.Icon)
@@ -239,12 +256,31 @@ local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 		if item.IconLayout then
 			applyProps(icon, item.IconLayout)
 		end
+		-- Cada paquete usa su ilustración completa desde ShopConfig.
+		local rewardType = item.Reward and item.Reward.Type
+		if (rewardType == "Cash" or item.Title == "2x Cash") and not item.Featured and background then
+			for index = 1, 12 do
+				local bill = Instance.new("ImageLabel")
+				bill.Name = "CashPattern" .. index
+				bill.Image = ShopConfig.Icons.CashPattern
+				bill.BackgroundTransparency = 1
+				bill.ImageTransparency = 0.85
+				bill.Size = UDim2.fromScale(0.21, 0.2)
+				bill.Position =
+					UDim2.fromScale(((index - 1) % 4) * 0.28 - 0.03, 0.2 + math.floor((index - 1) / 4) * 0.27)
+				bill.Rotation = -25
+				bill.ScaleType = Enum.ScaleType.Fit
+				bill.ZIndex = 2
+				bill.Parent = background
+			end
+		end
 	end
 end
 
 local function styleTexts(card: GuiObject, item: ShopConfig.Item)
 	local title = card:FindFirstChild("Title") :: TextLabel?
 	if title then
+		title.FontFace = ShopConfig.Font
 		title.Text = item.Title
 		if item.TitleColor then
 			title.TextColor3 = item.TitleColor
@@ -268,12 +304,14 @@ local function styleTexts(card: GuiObject, item: ShopConfig.Item)
 
 	local subtitle = card:FindFirstChild("Subtitle") :: TextLabel?
 	if subtitle then
+		subtitle.FontFace = ShopConfig.Font
 		subtitle.Visible = item.Subtitle ~= nil
 		subtitle.Text = item.Subtitle or ""
 	end
 
 	local description = card:FindFirstChild("Description") :: TextLabel?
 	if description then
+		description.FontFace = ShopConfig.Font
 		description.Text = item.Description or ""
 		if item.DescriptionColor then
 			description.TextColor3 = item.DescriptionColor
@@ -301,7 +339,8 @@ end
 -- Guarda el grosor de diseño y pone el escalado: un re-estilo (ej. OWNED) no vuelve al crudo.
 local function setStrokeThickness(stroke: UIStroke, base: number)
 	stroke:SetAttribute("BaseThickness", base)
-	stroke.Thickness = math.max(1, base * strokeFactor())
+	stroke:SetAttribute("ResponsiveThickness", nil)
+	stroke.Thickness = base
 end
 
 -- `key` es la clave en ShopConfig.ButtonColors.
@@ -341,7 +380,8 @@ local function styleButtonSkin(button: Instance, key: string)
 		-- Un UIGradient hijo de un UIStroke pinta el trazo.
 		setGradient(rimStroke, {
 			colors[1]:Lerp(white, buttonStyle.RimLighten),
-			colors[2]:Lerp(white, buttonStyle.RimLighten),
+			colors[math.ceil(#colors / 2)]:Lerp(white, buttonStyle.RimLighten),
+			colors[#colors]:Lerp(white, buttonStyle.RimLighten),
 		})
 		rimStroke:SetAttribute("Rim", true)
 		setStrokeThickness(rimStroke, buttonStyle.RimThickness)
@@ -365,7 +405,9 @@ local function styleBuyButton(card: GuiObject, itemId: string, item: ShopConfig.
 	elseif owned[itemId] then
 		text, key = "OWNED", "Owned"
 	else
-		text, key = ROBUX_GLYPH .. tostring(item.Price or "?"), "Buy"
+		local number = tostring(item.Price or "?")
+		number = number:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+		text, key = ROBUX_GLYPH .. number, "Buy"
 	end
 
 	styleButtonSkin(buy, key)
@@ -396,12 +438,9 @@ local function onBuy(itemId: string, item: ShopConfig.Item)
 	if owned[itemId] then
 		return
 	end
-	if not item.ProductId or item.ProductId == 0 then
-		DebugConfig.warn(("[ShopController] '%s' no tiene ProductId en ShopConfig todavía"):format(itemId))
-		return
-	end
-	-- Solo el Id: el servidor busca el producto, valida y abre el prompt.
-	Remotes.event("RequestShopPurchase"):FireServer(itemId)
+	PurchaseEffect.Start(itemId, item, function()
+		Remotes.event("RequestShopPurchase"):FireServer(itemId)
+	end)
 end
 
 local function bindCardButton(button: GuiButton?, visible: boolean, onClick: () -> ())
@@ -416,6 +455,12 @@ local function bindCardButton(button: GuiButton?, visible: boolean, onClick: () 
 	end
 	if not visible then
 		return
+	end
+	if slot then
+		-- UIScale toma el centro del botón como origen del hover.
+		button.AnchorPoint = Vector2.new(0.5, 0.5)
+		button.Position = UDim2.fromScale(0.5, 0.5)
+		button.Size = UDim2.fromScale(1, 1)
 	end
 	UIEffects.bindButton(button, onClick)
 	UIEffects.bindHover(button, Style.Hover.Button)
@@ -438,10 +483,179 @@ local function placeAboveActions(card: GuiObject, actions: GuiObject, slot: GuiO
 	fit()
 end
 
+local function closeGift()
+	if main then
+		main.Header.Visible = true
+		content.Visible = true
+		main.InnerBorder.Visible = true
+		main.Outline.Enabled = true
+		main.BackgroundTransparency = main:GetAttribute("ShopBackgroundTransparency") or 0.35
+	end
+	giftItemId = nil
+	if giftOverlay then
+		giftOverlay.Visible = false
+	end
+end
+
+local function updateGiftCanvas()
+	if not giftList then
+		return
+	end
+	local layout = giftList:FindFirstChildOfClass("UIListLayout")
+	local padding = giftList:FindFirstChildOfClass("UIPadding")
+	if layout then
+		local top = if padding then padding.PaddingTop.Offset else 0
+		local bottom = if padding then padding.PaddingBottom.Offset else 0
+		giftList.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + top + bottom)
+	end
+end
+
+local function selectGiftTarget(target: Player)
+	local itemId = giftItemId
+	if not itemId then
+		return
+	end
+	local item = ShopConfig.get(itemId)
+	if not item then
+		return
+	end
+	-- El catálogo usa ProductId 0 por ahora. Guardamos la selección para que la UI y
+	-- el flujo queden listos; el prompt real se conecta al asignar productos de regalo.
+	player:SetAttribute("SelectedGiftItem", itemId)
+	player:SetAttribute("SelectedGiftTargetUserId", target.UserId)
+	if not item.ProductId or item.ProductId <= 0 then
+		DebugConfig.warn(
+			("[ShopController] Regalo '%s' para @%s seleccionado; falta configurar ProductId"):format(
+				itemId,
+				target.Name
+			)
+		)
+	else
+		DebugConfig.warn(
+			("[ShopController] Regalo '%s' para @%s seleccionado; falta el producto de gifting persistente"):format(
+				itemId,
+				target.Name
+			)
+		)
+	end
+	closeGift()
+end
+
+local function clearGiftRows()
+	if not giftList then
+		return
+	end
+	for _, child in giftList:GetChildren() do
+		if child:IsA("GuiObject") and child ~= giftEmpty then
+			child:Destroy()
+		end
+	end
+end
+
+local function refreshGiftPlayers()
+	if not (giftList and giftEmpty) then
+		return
+	end
+	clearGiftRows()
+	local count = 0
+	for _, target in Players:GetPlayers() do
+		if target == player then
+			continue
+		end
+		local row = UITemplates.clone("ShopGiftPlayer")
+		if not row then
+			continue
+		end
+		count += 1
+		row.Name = "Player_" .. target.UserId
+		row.LayoutOrder = count
+		row.DisplayName.Text = target.DisplayName
+		row.Username.Text = "@" .. target.Name
+		row.Parent = giftList
+		local selectButton = row:FindFirstChild("SelectButton") :: GuiButton?
+		if selectButton then
+			UIEffects.bindButton(selectButton, function()
+				selectGiftTarget(target)
+			end)
+			UIEffects.bindHover(selectButton, Style.Hover.Button)
+		end
+		task.spawn(function()
+			local ok, image = pcall(
+				Players.GetUserThumbnailAsync,
+				Players,
+				target.UserId,
+				Enum.ThumbnailType.HeadShot,
+				Enum.ThumbnailSize.Size150x150
+			)
+			if ok and row.Parent then
+				row.Avatar.Image = image
+			end
+		end)
+	end
+	if count == 0 then
+		local preview = UITemplates.clone("ShopGiftPlayer")
+		if preview then
+			preview.Name = "GiftPreview"
+			preview.LayoutOrder = 1
+			preview.DisplayName.Text = "Preview Player"
+			preview.Username.Text = "@player_preview"
+			local selectButton = preview:FindFirstChild("SelectButton") :: TextButton?
+			if selectButton then
+				selectButton.Label.Text = "Select"
+				selectButton.Active = true
+				selectButton.Interactable = true
+				UIEffects.bindButton(selectButton, function()
+					-- Vista previa: reproduce el feedback sin seleccionar un destinatario real.
+				end)
+				UIEffects.bindHover(selectButton, Style.Hover.Button)
+			end
+			preview.Parent = giftList
+			task.spawn(function()
+				local ok, image = pcall(
+					Players.GetUserThumbnailAsync,
+					Players,
+					player.UserId,
+					Enum.ThumbnailType.HeadShot,
+					Enum.ThumbnailSize.Size150x150
+				)
+				if ok and preview.Parent then
+					preview.Avatar.Image = image
+				end
+			end)
+		end
+	end
+	giftEmpty.Visible = false
+	updateGiftCanvas()
+end
+
+local function openGift(itemId: string)
+	if not giftOverlay then
+		return
+	end
+	giftItemId = itemId
+	refreshGiftPlayers()
+	giftOverlay.Visible = true
+	main.Header.Visible = false
+	content.Visible = false
+	main.InnerBorder.Visible = false
+	main.Outline.Enabled = false
+	main.BackgroundTransparency = 1
+	local h = math.clamp(giftOverlay.AbsoluteSize.X * 0.185, 76, 104)
+	for _, row in giftList:GetChildren() do
+		if row:IsA("Frame") then
+			row.Size = UDim2.new(1, 0, 0, h)
+		end
+	end
+	updateGiftCanvas()
+end
+
 local function bindButtons(card: GuiObject, itemId: string, item: ShopConfig.Item)
 	local actions = card:FindFirstChild("Actions") :: Frame?
 	if actions then
-		applyProps(actions, if item.Banner then ACTIONS_BANNER elseif item.Featured then ACTIONS_FEATURED else ACTIONS_DEFAULT)
+		applyProps(
+			actions,
+			if item.Banner then ACTIONS_BANNER elseif item.Featured then ACTIONS_FEATURED else ACTIONS_DEFAULT
+		)
 		local layout = actions:FindFirstChildOfClass("UIListLayout")
 		if layout then
 			layout.Padding = UDim.new(ShopConfig.ButtonStyle.Gap, 0)
@@ -457,7 +671,7 @@ local function bindButtons(card: GuiObject, itemId: string, item: ShopConfig.Ite
 		styleButtonSkin(gift, "Gift")
 	end
 	bindCardButton(gift, ShopConfig.GiftEnabled, function()
-		DebugConfig.warn(("[ShopController] Regalar '%s': flujo de regalos sin implementar"):format(itemId))
+		openGift(itemId)
 	end)
 
 	local gem = card:FindFirstChild("GemButton", true) :: GuiButton?
@@ -489,16 +703,16 @@ local function buildCard(itemId: string, item: ShopConfig.Item, width: number): 
 		return nil
 	end
 	card.Name = itemId
-	card.Size = UDim2.fromScale(width, 1)
+	card.Size = UDim2.fromScale(1, 1)
+	card.AnchorPoint = Vector2.new(0.5, 0.5)
+	card.Position = UDim2.fromScale(0.5, 0.5)
 
 	styleFrame(card, item)
 	styleBackground(card, item)
 	styleTexts(card, item)
 	bindButtons(card, itemId, item)
 
-	if not (item.Featured or item.Banner) then
-		UIEffects.bindHover(card, Style.Hover.Card)
-	end
+	UIEffects.bindHover(card, Style.Hover.Card)
 
 	cards[itemId] = card
 	return card
@@ -533,13 +747,21 @@ local function buildRow(index: number, row: ShopConfig.Row)
 	for order, itemId in row.Items do
 		local item = ShopConfig.get(itemId)
 		if not item then
-			DebugConfig.warn(("[ShopController] Rows[%d] nombra '%s', que no está en ShopConfig.Items"):format(index, itemId))
+			DebugConfig.warn(
+				("[ShopController] Rows[%d] nombra '%s', que no está en ShopConfig.Items"):format(index, itemId)
+			)
 			continue
 		end
 		local card = buildCard(itemId, item, cardWidth)
 		if card then
 			card.LayoutOrder = order
-			card.Parent = frame
+			local slot = Instance.new("Frame")
+			slot.Name = itemId .. "Slot"
+			slot.BackgroundTransparency = 1
+			slot.Size = UDim2.fromScale(cardWidth, 1)
+			slot.LayoutOrder = order
+			slot.Parent = frame
+			card.Parent = slot
 		end
 	end
 
@@ -547,6 +769,10 @@ local function buildRow(index: number, row: ShopConfig.Row)
 end
 
 local function buildShop()
+	for _, t in spinTweens do
+		t:Cancel()
+	end
+	table.clear(spinTweens)
 	for _, child in content:GetChildren() do
 		if child:IsA("GuiObject") then
 			child:Destroy()
@@ -596,13 +822,89 @@ local function bindCanvas()
 	fit()
 end
 
-local function setBlur(enabled: boolean)
-	local info = TweenInfo.new(Style.Blur.Duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(blur, info, { Size = if enabled then Style.Blur.Size else 0 }):Play()
+local function fitWindow()
+	local size = gui.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then
+		return
+	end
+	local width, height = WindowLayout.fitMain(size, main)
+	local headerHeight, closeSize = WindowLayout.fitHeader(main.Header, height, 88, 52)
+	content.Position = UDim2.fromOffset(0, headerHeight + 6)
+	content.Size = UDim2.new(1, 0, 1, -headerHeight - 14)
+	if giftOverlay then
+		giftOverlay.Size = UDim2.fromScale(if width < 550 then 0.98 else 0.82, 1)
+		giftOverlay.GiftCloseButton.Size = UDim2.fromOffset(closeSize, closeSize)
+		giftOverlay.Title.TextLimit.MaxTextSize = math.clamp(height * 0.09, 26, 56)
+		local rowHeight = math.clamp(giftOverlay.AbsoluteSize.X * 0.185, 76, 104)
+		if giftList then
+			for _, row in giftList:GetChildren() do
+				if row:IsA("Frame") then
+					row.Size = UDim2.new(1, 0, 0, rowHeight)
+				end
+			end
+			updateGiftCanvas()
+		end
+	end
+	scaleStrokes(main)
+end
+
+local sectionRequest = 0
+local sectionTween: Tween?
+local function cancelSectionScroll()
+	sectionRequest += 1
+	if sectionTween then
+		sectionTween:Cancel()
+		sectionTween = nil
+	end
+end
+
+function ShopController.OpenSection(section: string)
+	local targetName = ({ Cash = "Cash10K", Gems = "Gems100" })[section]
+	if not targetName or not content then
+		return false
+	end
+	cancelSectionScroll()
+	local request = sectionRequest
+	local wasOpen = UIManager.IsOpen(WINDOW_NAME)
+	UIManager.Open(WINDOW_NAME)
+	closeGift()
+	task.spawn(function()
+		-- La animación de apertura mueve las posiciones absolutas: se mide cuando termina.
+		if not wasOpen then
+			task.wait(Style.Open.Duration + 0.08)
+		end
+		RunService.Heartbeat:Wait()
+		if request ~= sectionRequest or not UIManager.IsOpen(WINDOW_NAME) then
+			return
+		end
+		local card = cards[targetName]
+		if not card then
+			return
+		end
+		-- La fila, no la tarjeta: el hover de la tarjeta la agranda y la gira.
+		local row = card.Parent.Parent
+		local margin = math.clamp(content.AbsoluteSize.Y * 0.035, 12, 24)
+		local y = row.AbsolutePosition.Y - content.AbsolutePosition.Y + content.CanvasPosition.Y - margin
+		local limit = math.max(0, content.AbsoluteCanvasSize.Y - content.AbsoluteWindowSize.Y)
+		local target = Vector2.new(0, math.clamp(y, 0, limit))
+		local distance = math.abs(target.Y - content.CanvasPosition.Y)
+		if distance < 1 then
+			content.CanvasPosition = target
+			return
+		end
+		local duration = math.clamp(distance / 3500, 0.3, 0.65)
+		sectionTween = TweenService:Create(
+			content,
+			TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ CanvasPosition = target }
+		)
+		sectionTween:Play()
+	end)
+	return true
 end
 
 function ShopController.Init()
-	local gui = UIManager.WaitForGui(GUI_NAME)
+	gui = UIManager.WaitForGui(GUI_NAME)
 	if not gui then
 		return
 	end
@@ -611,16 +913,48 @@ function ShopController.Init()
 		return
 	end
 	main = found
+	main:SetAttribute("ShopBackgroundTransparency", main.BackgroundTransparency)
 	local list = UIEffects.findChild(main, "Content", GUI_NAME)
 	if not (list and list:IsA("ScrollingFrame")) then
 		return
 	end
 	content = list
+	content.InputBegan:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.Touch
+			or input.UserInputType == Enum.UserInputType.MouseButton1
+		then
+			cancelSectionScroll()
+		end
+	end)
+	content.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseWheel then
+			cancelSectionScroll()
+		end
+	end)
+	giftOverlay = main:FindFirstChild("GiftOverlay") :: Frame?
+	if giftOverlay then
+		giftOverlay.Visible = false
+		giftList = giftOverlay:FindFirstChild("PlayerList") :: ScrollingFrame?
+		giftEmpty = giftList and giftList:FindFirstChild("EmptyLabel") :: TextLabel?
+		local giftClose = giftOverlay:FindFirstChild("GiftCloseButton") :: GuiButton?
+		if giftClose then
+			UIEffects.bindButton(giftClose, closeGift)
+			UIEffects.bindHover(giftClose, { Scale = 1.08, Rotation = 5, Duration = 0.14 })
+		end
+		if giftList then
+			local layout = giftList:FindFirstChildOfClass("UIListLayout")
+			if layout then
+				layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateGiftCanvas)
+			end
+		end
+	end
+	local windowClose = main:FindFirstChild("CloseButton", true) :: GuiButton?
+	if windowClose then
+		UIEffects.bindHover(windowClose, { Scale = 1.08, Rotation = 5, Duration = 0.14 })
+	end
 
-	blur = Instance.new("BlurEffect")
-	blur.Name = BLUR_NAME
-	blur.Size = 0
-	blur.Parent = Lighting
+	setBlur = UIEffects.makeBlur(BLUR_NAME, Style.Blur.Size, Style.Blur.Duration)
 
 	for index, soundId in ShopConfig.Sounds.Open do
 		local sound = UIEffects.makeSound("ShopOpen" .. index, soundId, ShopConfig.Sounds.Volume)
@@ -641,23 +975,59 @@ function ShopController.Init()
 		OpenDuration = Style.Open.Duration,
 	})
 	UIManager.OnOpened(WINDOW_NAME, function()
+		for _, t in spinTweens do
+			t:Play()
+		end
 		content.CanvasPosition = Vector2.zero
+		closeGift()
+		task.defer(fitWindow)
 		setBlur(true)
 		for _, sound in openSounds do
 			UIEffects.playOneShot(sound)
 		end
 	end)
 	UIManager.OnClosed(WINDOW_NAME, function()
+		cancelSectionScroll()
+		for _, t in spinTweens do
+			t:Pause()
+		end
+		closeGift()
 		setBlur(false)
 	end)
 
+	gui.Destroying:Connect(function()
+		for _, t in spinTweens do
+			t:Cancel()
+		end
+		table.clear(spinTweens)
+	end)
 	buildShop()
 	bindCanvas()
+	fitWindow()
+	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitWindow)
+	Players.PlayerAdded:Connect(function()
+		if giftOverlay and giftOverlay.Visible then
+			refreshGiftPlayers()
+		end
+	end)
+	Players.PlayerRemoving:Connect(function()
+		if giftOverlay and giftOverlay.Visible then
+			task.defer(refreshGiftPlayers)
+		end
+	end)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or not (giftOverlay and giftOverlay.Visible) then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB then
+			closeGift()
+		end
+	end)
 
 	local camera = Workspace.CurrentCamera
 	if camera then
 		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			scaleStrokes(main)
+			fitWindow()
 		end)
 	end
 

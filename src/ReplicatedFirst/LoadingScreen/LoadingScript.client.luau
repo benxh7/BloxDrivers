@@ -6,15 +6,20 @@ local Players = game:GetService("Players")
 local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
+local StarterPack = game:GetService("StarterPack")
+local StarterPlayer = game:GetService("StarterPlayer")
+local Lighting = game:GetService("Lighting")
+local MaterialService = game:GetService("MaterialService")
+local SoundService = game:GetService("SoundService")
 
 -- WaitForChild: desde ReplicatedFirst, ReplicatedStorage puede no haber replicado todavía.
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 local PreloadAssets = require(ReplicatedStorage:WaitForChild("PreloadAssets"))
 local MenuCameraConfig = require(ReplicatedStorage:WaitForChild("MenuCameraConfig"))
 local MenuCamera = require(script.Parent:WaitForChild("MenuCamera"))
-local AnimationPreloader = require(script.Parent:WaitForChild("AnimationPreloader"))
+local PreloadRunner = require(script.Parent:WaitForChild("PreloadRunner"))
+local Responsive = require(script.Parent:WaitForChild("Responsive"))
 local WaveTransition = require(script.Parent:WaitForChild("WaveTransition"))
-local SoundService = game:GetService("SoundService")
 local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
 local setLoadingComplete = Remotes.event("SetLoadingComplete")
 
@@ -28,7 +33,8 @@ ReplicatedFirst:RemoveDefaultLoadingScreen()
 local template = script.Parent:WaitForChild("LoadingGui") :: ScreenGui
 local gui = template:Clone()
 gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
+gui.IgnoreGuiInset = false
+gui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
 gui.DisplayOrder = 1000
 gui.Parent = playerGui
 
@@ -37,9 +43,11 @@ local center = background:WaitForChild("Center") :: Frame
 local actionButton = center:WaitForChild("SkipButton") :: TextButton
 local tipLabel = center:WaitForChild("TipFrame"):WaitForChild("TipLabel") :: TextLabel
 
+local fitResponsive = Responsive.attach(gui)
+
 -- Reemplazar con tips propios de BloxDrivers.
 local TIPS = {
-	"Tip: personalizá estos textos en LoadingScript.client.luau.",
+	"Tip: check the rewards menu for free bonuses.",
 }
 
 local LOADING_MESSAGES = {
@@ -63,7 +71,7 @@ local PLAY_BUTTON_COLOR = Color3.fromRGB(46, 204, 113)
 local PLAY_BUTTON_TINT_SECONDS = 0.4
 -- DROP en escala del padre.
 local PLAY_BUTTON_GROW = 1.12
-local PLAY_BUTTON_DROP = 0.05
+local PLAY_BUTTON_DROP = 0.035
 local PLAY_BUTTON_REVEAL_SECONDS = 0.5
 local HOVER_SCALE = 1.06
 local HOVER_SECONDS = 0.15
@@ -89,10 +97,6 @@ local LOGO_TILT_SECONDS = 4.5
 -- DEBUG: simula una precarga lenta para ver SKIP -> PLAY. VOLVER A FALSE ANTES DE PUBLICAR.
 local TEST_ASSETS = false
 local TEST_ASSET_DURATION = 60
-
--- Vacía a propósito: antes de agregar un ID acá, movelo a un config listado en
--- PreloadAssets.SOURCES.
-local EXTRA_PRELOAD_IDS = {}
 
 actionButton.Visible = false
 
@@ -146,17 +150,25 @@ local FADE_PROPERTIES: { [string]: { string } } = {
 local function fadeSubtree(root: Instance, duration: number, skip: { Instance }?)
 	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad)
 	local function isSkipped(instance: Instance): boolean
-		if not skip then return false end
+		if not skip then
+			return false
+		end
 		for _, excluded in skip do
-			if instance == excluded or instance:IsDescendantOf(excluded) then return true end
+			if instance == excluded or instance:IsDescendantOf(excluded) then
+				return true
+			end
 		end
 		return false
 	end
 
 	local function apply(instance: Instance)
-		if isSkipped(instance) then return end
+		if isSkipped(instance) then
+			return
+		end
 		local properties = FADE_PROPERTIES[instance.ClassName]
-		if not properties then return end
+		if not properties then
+			return
+		end
 		local goal: { [string]: number } = {}
 		for _, property in properties do
 			goal[property] = 1
@@ -184,19 +196,16 @@ local function setButtonText(text: string)
 end
 
 local function scaleUDim2(size: UDim2, factor: number): UDim2
-	return UDim2.new(
-		size.X.Scale * factor,
-		size.X.Offset * factor,
-		size.Y.Scale * factor,
-		size.Y.Offset * factor
-	)
+	return UDim2.new(size.X.Scale * factor, size.X.Offset * factor, size.Y.Scale * factor, size.Y.Offset * factor)
 end
 
 -- UIScale y no Size: PLAY ya tweenea su Size al desplegarse y el hover lo pisaría.
 local function attachHover(button: GuiButton)
 	-- Crece desde el AnchorPoint: descentrado, se estira hacia abajo y a la derecha.
 	if button.AnchorPoint ~= Vector2.new(0.5, 0.5) then
-		DebugConfig.warn("[LoadingScreen] " .. button.Name .. ": poné AnchorPoint en 0.5, 0.5 para que crezca desde su centro")
+		DebugConfig.warn(
+			"[LoadingScreen] " .. button.Name .. ": poné AnchorPoint en 0.5, 0.5 para que crezca desde su centro"
+		)
 	end
 
 	local scale = button:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
@@ -246,7 +255,9 @@ local function tintButtonGreen()
 	}):Play()
 
 	local gradient = actionButton:FindFirstChildOfClass("UIGradient")
-	if not gradient then return end
+	if not gradient then
+		return
+	end
 
 	-- Se lleva a blanco (no tiñe) antes de apagarlo: si no, salto de color. ColorSequence
 	-- no se puede tweenear: se interpola a mano.
@@ -257,7 +268,9 @@ local function tintButtonGreen()
 		while gradient.Parent do
 			local alpha = math.min((os.clock() - startedAt) / PLAY_BUTTON_TINT_SECONDS, 1)
 			gradient.Color = lerpSequence(from, to, alpha)
-			if alpha >= 1 then break end
+			if alpha >= 1 then
+				break
+			end
 			task.wait()
 		end
 		-- Enabled y no Destroy: no se toca lo armado en Studio.
@@ -269,7 +282,9 @@ local animatedTexture = background:FindFirstChild("AnimatedTexture")
 
 local function findLogo(): ImageLabel?
 	local byName = gui:FindFirstChild(LOGO_NAME, true)
-	if byName and byName:IsA("ImageLabel") then return byName end
+	if byName and byName:IsA("ImageLabel") then
+		return byName
+	end
 
 	for _, descendant in gui:GetDescendants() do
 		if descendant:IsA("ImageLabel") and not (animatedTexture and descendant:IsDescendantOf(animatedTexture)) then
@@ -283,28 +298,40 @@ end
 local function animateLogo(logo: ImageLabel)
 	-- Rotation gira alrededor del AnchorPoint: descentrado, el logo se desplaza en arco.
 	if logo.AnchorPoint ~= Vector2.new(0.5, 0.5) then
-		DebugConfig.warn("[LoadingScreen] " .. logo.Name .. ": poné AnchorPoint en 0.5, 0.5 para que gire sobre su centro")
+		DebugConfig.warn(
+			"[LoadingScreen] " .. logo.Name .. ": poné AnchorPoint en 0.5, 0.5 para que gire sobre su centro"
+		)
 	end
 
 	-- UIScale y no Size: no pelea con UIAspectRatioConstraint ni con el layout del padre.
 	local scale = logo:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
 	scale.Parent = logo
 	scale.Scale = 1 - LOGO_BREATH_SCALE
-	TweenService:Create(scale, TweenInfo.new(LOGO_BREATH_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-		Scale = 1 + LOGO_BREATH_SCALE,
-	}):Play()
+	TweenService
+		:Create(
+			scale,
+			TweenInfo.new(LOGO_BREATH_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{
+				Scale = 1 + LOGO_BREATH_SCALE,
+			}
+		)
+		:Play()
 
 	logo.Rotation = -LOGO_TILT_DEGREES
-	TweenService:Create(logo, TweenInfo.new(LOGO_TILT_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-		Rotation = LOGO_TILT_DEGREES,
-	}):Play()
+	TweenService
+		:Create(logo, TweenInfo.new(LOGO_TILT_SECONDS, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Rotation = LOGO_TILT_DEGREES,
+		})
+		:Play()
 end
 
 local logo = findLogo()
 if logo then
 	animateLogo(logo)
 else
-	DebugConfig.warn("[LoadingScreen] Sin imagen de menú: no hay ningún '" .. LOGO_NAME .. "' ni otro ImageLabel en LoadingGui")
+	DebugConfig.warn(
+		"[LoadingScreen] Sin imagen de menú: no hay ningún '" .. LOGO_NAME .. "' ni otro ImageLabel en LoadingGui"
+	)
 end
 
 -- El logo puede colgar del Background: sin excluirlo, el fade de la escena 3D lo borraría.
@@ -323,7 +350,9 @@ local labelThread = task.spawn(function()
 
 	-- Al azar puro, la misma frase salía dos veces seguidas.
 	local function pickDifferent(pool: { string }, current: string): string
-		if #pool < 2 then return pool[1] end
+		if #pool < 2 then
+			return pool[1]
+		end
 		local pick = current
 		while pick == current do
 			pick = pool[rng:NextInteger(1, #pool)]
@@ -372,7 +401,9 @@ local coreGuiStates: { [Enum.CoreGuiType]: boolean } = {}
 local ownGuis: { [Instance]: boolean } = { [gui] = true }
 
 local function hideGui(instance: Instance)
-	if ownGuis[instance] or not instance:IsA("ScreenGui") then return end
+	if ownGuis[instance] or not instance:IsA("ScreenGui") then
+		return
+	end
 	local screenGui = instance :: ScreenGui
 	hiddenGuis[screenGui] = screenGui.Enabled
 	screenGui.Enabled = false
@@ -393,7 +424,9 @@ local function hideGameGuis()
 
 	-- Uno por uno: SetCoreGuiEnabled(All, true) prendería lo que el juego dejó apagado.
 	for _, coreType in Enum.CoreGuiType:GetEnumItems() do
-		if coreType == Enum.CoreGuiType.All or GAME_MANAGED_CORE_GUI[coreType] then continue end
+		if coreType == Enum.CoreGuiType.All or GAME_MANAGED_CORE_GUI[coreType] then
+			continue
+		end
 		pcall(function()
 			coreGuiStates[coreType] = StarterGui:GetCoreGuiEnabled(coreType)
 			StarterGui:SetCoreGuiEnabled(coreType, false)
@@ -452,7 +485,9 @@ task.spawn(function()
 	end
 
 	-- Revalidado después de esperar: si entró mientras tanto, congelarlo lo trabaría adentro.
-	if entered then return end
+	if entered then
+		return
+	end
 
 	savedWalkSpeed = humanoid.WalkSpeed
 	savedJumpPower = humanoid.JumpPower
@@ -474,12 +509,11 @@ task.spawn(function()
 	fadeSubtree(background, MenuCameraConfig.RevealSeconds, revealSkip)
 end)
 
-local buttonSize = actionButton.Size
-local buttonPosition = actionButton.Position
-
 -- Sin timeout duro: adelantarse es decisión del jugador.
 task.delay(SKIP_DELAY, function()
-	if entered or doneLoading then return end
+	if entered or doneLoading then
+		return
+	end
 	setButtonText(SKIP_TEXT)
 	actionButton.Visible = true
 end)
@@ -488,13 +522,19 @@ actionButton.Activated:Connect(function()
 	if clickSound then
 		clickSound:Play()
 	end
-	if entered then return end
+	if entered then
+		return
+	end
 	entered = true
 	actionButton.Interactable = false
 end)
 
 if TEST_ASSETS then
-	DebugConfig.warn("[LoadingScreen] TEST_ASSETS activo — simulando una precarga de " .. TEST_ASSET_DURATION .. "s. Recordá volver a false antes de publicar.")
+	DebugConfig.warn(
+		"[LoadingScreen] TEST_ASSETS activo — simulando una precarga de "
+			.. TEST_ASSET_DURATION
+			.. "s. Recordá volver a false antes de publicar."
+	)
 	task.spawn(function()
 		local elapsed = 0
 		while elapsed < TEST_ASSET_DURATION and not entered do
@@ -505,121 +545,106 @@ if TEST_ASSETS then
 		DebugConfig.print("[LoadingScreen] TEST_ASSETS simulation finished")
 	end)
 else
-	-- IDs y no instancias: una instancia puede traer varios (MeshId y TextureID).
-	local function isRealAsset(id: string): boolean
-		return id ~= "" and id ~= "rbxassetid://0"
-	end
-
-	-- Estáticos: el total sale idéntico en cada sesión.
-	local SCAN_CONTAINERS: { Instance } = {
-		ReplicatedStorage,
-		ReplicatedFirst,
-		game:GetService("StarterGui"),
-		game:GetService("StarterPack"),
-		game:GetService("StarterPlayer"),
-		game:GetService("Lighting"),
-		game:GetService("SoundService"),
-	}
-
-	-- Barrer a medio replicar da un total inestable.
-	if not game:IsLoaded() then
-		game.Loaded:Wait()
-	end
-
-	-- El mapa activo y los personajes se crean en runtime y harían bailar el total.
-	local RUNTIME_WORKSPACE_FOLDERS = { Maps = true }
-
-	for _, child in workspace:GetChildren() do
-		if RUNTIME_WORKSPACE_FOLDERS[child.Name] then continue end
-		if Players:GetPlayerFromCharacter(child) then continue end
-		table.insert(SCAN_CONTAINERS, child)
-	end
-
-	-- Set: el mismo ID aparece en decenas de instancias y alcanza con bajarlo una vez.
-	local seen: { [string]: true } = {}
-	local assetsToLoad: { string } = {}
-
-	local function addAsset(id: string)
-		if not isRealAsset(id) or seen[id] then return end
-		seen[id] = true
-		table.insert(assetsToLoad, id)
-	end
-
-	-- Vistas antes del barrido: PreloadAsync da OK sobre una animación sin bajarla.
-	local animationIds = PreloadAssets.collectAnimationIds()
-	for _, id in animationIds do
-		seen[id] = true
-	end
-
-	for _, container in SCAN_CONTAINERS do
-		PreloadAssets.forEachAssetId(container, addAsset)
-	end
-	-- IDs escritos dentro de los catálogos, que el barrido de Instances no ve. pcall: un
-	-- catálogo roto no voltea la carga.
-	local okCatalogs, catalogIds = pcall(function()
-		return PreloadAssets.collect()
-	end)
-	if okCatalogs and typeof(catalogIds) == "table" then
-		for _, id in catalogIds do
-			addAsset(id)
-		end
-	else
-		DebugConfig.warn("[LoadingScreen] No se pudieron leer los assets de los catálogos: " .. tostring(catalogIds))
-	end
-
-	-- ServerStorage no replica: lo enumera el servidor (AssetManifestService).
-	local manifest = ReplicatedStorage:WaitForChild("ServerAssetManifest", 5)
-	if manifest and manifest:IsA("StringValue") then
-		local count = 0
-		for id in manifest.Value:gmatch("[^\n]+") do
-			addAsset(id)
-			count += 1
-		end
-		DebugConfig.print("[LoadingScreen] " .. count .. " assets de ServerStorage desde el manifiesto")
-	else
-		DebugConfig.warn("[LoadingScreen] Sin ServerAssetManifest: lo de ServerStorage se va a cargar en pleno juego")
-	end
-
-	for _, id in EXTRA_PRELOAD_IDS do
-		addAsset(id)
-	end
-	local totalAssets = #assetsToLoad + #animationIds
-
-	DebugConfig.print("[LoadingScreen] Preloading " .. #assetsToLoad .. " assets + " .. #animationIds .. " animaciones")
-
-	local loadedCount = 0
-	local function countOne()
-		loadedCount += 1
-		if totalAssets > 0 then
-			loadedAlpha = loadedCount / totalAssets
-		end
-	end
-
-	-- En paralelo: las animaciones esperan al personaje y en serie tardarían de más.
-	local pendingPhases = 2
-	local function finishPhase()
-		pendingPhases -= 1
-		if pendingPhases == 0 then
-			doneLoading = true
-			DebugConfig.print("[LoadingScreen] Preload finished (" .. loadedCount .. "/" .. totalAssets .. ")")
-		end
-	end
-
 	task.spawn(function()
-		ContentProvider:PreloadAsync(assetsToLoad, function(_contentId, _status)
-			countOne()
-		end)
-		finishPhase()
-	end)
-
-	task.spawn(function()
-		local ok, loaded = pcall(AnimationPreloader.preload, animationIds, countOne)
-		if ok then
-			DebugConfig.print("[LoadingScreen] " .. tostring(loaded) .. "/" .. #animationIds .. " animaciones cacheadas")
-		else
-			DebugConfig.warn("[LoadingScreen] No se pudieron precargar las animaciones: " .. tostring(loaded))
+		if not game:IsLoaded() then
+			game.Loaded:Wait()
 		end
-		finishPhase()
+		local seen, ids = {}, {}
+		local function add(id)
+			id = PreloadAssets.normalize(id)
+			if id and not seen[id] then
+				seen[id] = true
+				table.insert(ids, id)
+			end
+		end
+		local roots = {
+			ReplicatedStorage,
+			ReplicatedFirst,
+			StarterGui,
+			playerGui,
+			workspace,
+			StarterPack,
+			StarterPlayer,
+			Lighting,
+			SoundService,
+			MaterialService,
+		}
+		for _, root in roots do
+			PreloadAssets.forEachAssetId(root, add)
+		end
+		for _, id in PreloadAssets.collect() do
+			add(id)
+		end
+		local manifest = ReplicatedStorage:WaitForChild("ServerAssetManifest", 15)
+		local function manifestIds(callback)
+			if not manifest then
+				return
+			end
+			for line in manifest.Value:gmatch("[^\n]+") do
+				local id, class, property = line:match("^([^\t]+)\t([^\t]+)\t([^\t]+)$")
+				if id then
+					PreloadAssets.Kinds[id] = { Class = class, Property = property }
+					callback(id)
+				else
+					callback(line)
+				end
+			end
+		end
+		manifestIds(add)
+		gui:SetAttribute("PreloadTotal", #ids)
+		local result = PreloadRunner.Run(ids, function(processed, total, failed)
+			loadedAlpha = if total > 0 then processed / total else 1
+			if gui.Parent then
+				gui:SetAttribute("PreloadProcessed", processed)
+				gui:SetAttribute("PreloadFailed", failed)
+			end
+		end, 60)
+		if result.Failed > 0 or result.TimedOut > 0 then
+			READY_TEXT = "Ready — some assets will retry in game"
+			warn(("[LoadingScreen] %d failed; %d pending"):format(result.Failed, result.TimedOut))
+		end
+		if gui.Parent then
+			gui:SetAttribute("PreloadTimedOut", result.TimedOut)
+			gui:SetAttribute("PreloadComplete", true)
+		end
+		doneLoading = true
+		-- Lo que aparezca después se encola solo: no hay lista manual.
+		local pending = {}
+		local scheduled = false
+		local function queue(id)
+			id = PreloadAssets.normalize(id)
+			if not id or seen[id] then
+				return
+			end
+			seen[id] = true
+			table.insert(pending, id)
+			if scheduled then
+				return
+			end
+			scheduled = true
+			task.delay(0.5, function()
+				while #pending > 0 do
+					local batch = pending
+					pending = {}
+					PreloadRunner.Run(batch, function() end, 45)
+				end
+				scheduled = false
+			end)
+		end
+		for _, root in roots do
+			root.DescendantAdded:Connect(function(o)
+				task.defer(function()
+					PreloadAssets.scanInstance(o, queue)
+				end)
+			end)
+			-- Lo que apareció durante la primera precarga.
+			PreloadAssets.forEachAssetId(root, queue)
+		end
+		if manifest then
+			manifest.Changed:Connect(function()
+				manifestIds(queue)
+			end)
+		end
 	end)
 end
 
@@ -635,14 +660,24 @@ if not entered then
 end
 
 if not entered then
+	fitResponsive()
+	local buttonSize = actionButton.Size
+	local buttonPosition = actionButton.Position
+	gui:SetAttribute("LoadingReady", true)
 	setButtonText(PLAY_TEXT)
 	actionButton.Visible = true
 
 	-- Ya estaba como SKIP: el cambio se anuncia agrandándolo, no apareciendo de la nada.
-	TweenService:Create(actionButton, TweenInfo.new(PLAY_BUTTON_REVEAL_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Size = scaleUDim2(buttonSize, PLAY_BUTTON_GROW),
-		Position = buttonPosition + UDim2.new(0, 0, PLAY_BUTTON_DROP, 0),
-	}):Play()
+	TweenService
+		:Create(
+			actionButton,
+			TweenInfo.new(PLAY_BUTTON_REVEAL_SECONDS, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{
+				Size = scaleUDim2(buttonSize, PLAY_BUTTON_GROW),
+				Position = buttonPosition + UDim2.new(0, 0, PLAY_BUTTON_DROP, 0),
+			}
+		)
+		:Play()
 	tintButtonGreen()
 
 	while not entered do

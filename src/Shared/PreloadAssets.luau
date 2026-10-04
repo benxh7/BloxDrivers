@@ -1,20 +1,9 @@
 -- Ubicación en Studio: ReplicatedStorage > PreloadAssets (ModuleScript)
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- Un barrido de Instances no ve los `rbxassetid://` escritos dentro de un ModuleScript
--- (se crean en runtime): por eso se recorren las tablas de los catálogos.
-local PreloadAssets = {}
-
--- Catálogos con assets a precargar: sumar acá cada config nuevo con imágenes o sonidos.
-local SOURCES: { { any } } = {
-	{ ReplicatedStorage, "TopbarConfig" },
-	{ ReplicatedStorage, "WaveTransitionConfig" },
-	-- Los sonidos de UI no: UIEffects los precarga solo.
-}
-
-local MAX_DEPTH = 6
-
-local ASSET_PROPERTIES: { [string]: { string } } = {
+-- Descubre asset IDs en instancias y en los *Config (que deben ser solo datos: los requiere).
+local RS = game:GetService("ReplicatedStorage")
+local Assets = {}
+Assets.Kinds = {}
+local properties = {
 	Decal = { "Texture" },
 	Texture = { "Texture" },
 	ImageLabel = { "Image" },
@@ -27,114 +16,100 @@ local ASSET_PROPERTIES: { [string]: { string } } = {
 	ParticleEmitter = { "Texture" },
 	Beam = { "Texture" },
 	Trail = { "Texture" },
+	Sky = { "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp", "SunTextureId", "MoonTextureId" },
+	SurfaceAppearance = { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" },
+	MaterialVariant = { "ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap" },
+	Shirt = { "ShirtTemplate" },
+	Pants = { "PantsTemplate" },
+	ShirtGraphic = { "Graphic" },
 }
-
--- No deduplica: lo hace quien llama.
-function PreloadAssets.forEachAssetId(root: Instance, callback: (string) -> ())
-	local function scan(instance: Instance)
-		local properties = ASSET_PROPERTIES[instance.ClassName]
-		if not properties then return end
-		for _, property in properties do
-			local ok, id = pcall(function()
-				return (instance :: any)[property]
-			end)
-			if ok and typeof(id) == "string" and id ~= "" and id ~= "rbxassetid://0" then
+function Assets.normalize(id)
+	if type(id) ~= "string" or id == "" then
+		return nil
+	end
+	local digits = id:match("^rbxassetid://(%d+)$") or id:match("[?&]id=(%d+)")
+	if digits then
+		return tonumber(digits) > 0 and "rbxassetid://" .. digits or nil
+	end
+	if id:match("^rbxasset://") or id:match("^rbxthumb://") or id:match("^https?://") then
+		return id
+	end
+	return nil
+end
+function Assets.scanInstance(o, callback)
+	for _, key in properties[o.ClassName] or {} do
+		local ok, value = pcall(function()
+			return o[key]
+		end)
+		if ok then
+			local id = Assets.normalize(value)
+			if id then
+				Assets.Kinds[id] = { Class = o.ClassName, Property = key }
 				callback(id)
 			end
 		end
 	end
-
-	scan(root)
-	for _, descendant in root:GetDescendants() do
-		scan(descendant)
+	for _, value in o:GetAttributes() do
+		local id = Assets.normalize(value)
+		if id then
+			callback(id)
+		end
 	end
 end
-
-local function isAssetId(value: any): boolean
-	if typeof(value) ~= "string" then return false end
-	local digits = value:match("^rbxassetid://(%d+)$")
-	return digits ~= nil and digits ~= "0"
-end
-
-local function resolve(path: { any }): any
-	local current = path[1]
-	for index = 2, #path do
-		if typeof(current) ~= "Instance" then return nil end
-		current = current:FindFirstChild(path[index])
-		if not current then return nil end
+function Assets.forEachAssetId(root, callback)
+	Assets.scanInstance(root, callback)
+	for _, o in root:GetDescendants() do
+		Assets.scanInstance(o, callback)
 	end
-	return current
 end
-
--- `seenTables` corta ciclos: una tabla que se referencia a sí misma colgaría el loop.
-local function walk(value: any, out: { [string]: true }, seenTables: { [any]: true }, depth: number)
-	if depth > MAX_DEPTH then return end
-	if isAssetId(value) then
-		out[value] = true
+local function walk(value, found, seen, hint)
+	local id = Assets.normalize(value)
+	if id then
+		found[id] = true
+		if not Assets.Kinds[id] then
+			Assets.Kinds[id] = hint or { Class = "ImageLabel", Property = "Image" }
+		end
 		return
 	end
-	if typeof(value) ~= "table" or seenTables[value] then return end
-
-	seenTables[value] = true
-	for key, child in value do
-		walk(key, out, seenTables, depth + 1)
-		walk(child, out, seenTables, depth + 1)
+	if type(value) ~= "table" or seen[value] then
+		return
+	end
+	seen[value] = true
+	for k, v in value do
+		local nextHint = hint
+		if type(k) == "string" then
+			local key = k:lower()
+			if key:find("sound") or key:find("music") then
+				nextHint = { Class = "Sound", Property = "SoundId" }
+			elseif key:find("animation") then
+				nextHint = { Class = "Animation", Property = "AnimationId" }
+			end
+		end
+		walk(k, found, seen, hint)
+		walk(v, found, seen, nextHint)
 	end
 end
-
-function PreloadAssets.collect(): { string }
-	local found: { [string]: true } = {}
-	local seenTables: { [any]: true } = {}
-
-	for _, path in SOURCES do
-		local moduleScript = resolve(path)
-		if moduleScript and moduleScript:IsA("ModuleScript") then
-			-- pcall: un catálogo roto cuesta un asset sin precargar, no el arranque.
-			local ok, catalog = pcall(require, moduleScript)
+function Assets.collect(root)
+	local found, seen = {}, {}
+	for _, o in (root or RS):GetDescendants() do
+		if
+			o:IsA("ModuleScript")
+			and (o.Name:match("Config$") or o:GetAttribute("PreloadConfig") == true)
+			and o:GetAttribute("PreloadConfig") ~= false
+		then
+			local ok, data = pcall(require, o)
 			if ok then
-			walk(catalog, found, seenTables, 0)
+				walk(data, found, seen)
+			else
+				warn("[PreloadAssets] " .. o:GetFullName() .. ": " .. tostring(data))
 			end
 		end
 	end
-
 	local ids = {}
 	for id in found do
 		table.insert(ids, id)
 	end
+	table.sort(ids)
 	return ids
 end
-
--- Aparte: PreloadAsync da OK sobre una animación sin bajarla (las carga AnimationPreloader).
-function PreloadAssets.collectAnimationIds(): { string }
-	local found: { [string]: true } = {}
-	local seenTables: { [any]: true } = {}
-
-	local function scan(value: any, depth: number)
-		if depth > MAX_DEPTH or typeof(value) ~= "table" or seenTables[value] then return end
-		seenTables[value] = true
-		for key, child in value do
-			if key == "AnimationId" and isAssetId(child) then
-				found[child] = true
-			end
-			scan(child, depth + 1)
-		end
-	end
-
-	for _, path in SOURCES do
-		local moduleScript = resolve(path)
-		if moduleScript and moduleScript:IsA("ModuleScript") then
-			local ok, catalog = pcall(require, moduleScript)
-			if ok then
-				scan(catalog, 0)
-			end
-		end
-	end
-
-	local ids = {}
-	for id in found do
-		table.insert(ids, id)
-	end
-	return ids
-end
-
-return PreloadAssets
+return Assets

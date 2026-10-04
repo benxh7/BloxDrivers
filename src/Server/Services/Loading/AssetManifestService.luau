@@ -1,50 +1,54 @@
 -- Ubicación en Studio: ServerScriptService > Services > Loading > AssetManifestService (ModuleScript)
--- ServerStorage no replica: el servidor publica sus asset IDs para que la carga los precargue.
--- No cubre el terreno: PreloadAsync no puede bajarlo.
+-- Publica en ReplicatedStorage.ServerAssetManifest los asset IDs que solo ve el servidor.
+local RS = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local PreloadAssets = require(ReplicatedStorage:WaitForChild("PreloadAssets"))
-local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
-
-local AssetManifestService = {}
-
--- El nombre lo espera LoadingScript: no cambiarlo sin cambiarlo allá.
-local MANIFEST_NAME = "ServerAssetManifest"
-local SEPARATOR = "\n"
-
--- Código sin assets: recorrerlo es tiempo de arranque perdido.
-local SKIP_CHILDREN = { EasyProfileStore = true }
-
-function AssetManifestService.Init()
-	local seen: { [string]: true } = {}
-	local ids: { string } = {}
-
-	local scanned = 0
-	for _, child in ServerStorage:GetChildren() do
-		if SKIP_CHILDREN[child.Name] then
-			continue
-		end
-		scanned += 1
-		PreloadAssets.forEachAssetId(child, function(id)
-			if seen[id] then
-				return
-			end
-			seen[id] = true
-			table.insert(ids, id)
-		end)
+local Lighting = game:GetService("Lighting")
+local MaterialService = game:GetService("MaterialService")
+local Assets = require(RS:WaitForChild("PreloadAssets"))
+local Service = {}
+function Service.Init()
+	local found = {}
+	local function add(id)
+		found[id] = true
 	end
-
-	-- Un solo StringValue (no una Instance por ID), lleno antes de parentarlo y creado
-	-- aunque quede vacío: el cliente distingue "no llegó" de "no hay nada".
-	local manifest = Instance.new("StringValue")
-	manifest.Name = MANIFEST_NAME
-	manifest.Value = table.concat(ids, SEPARATOR)
-	manifest.Parent = ReplicatedStorage
-
-	DebugConfig.print(
-		("[AssetManifestService] %d assets de %d carpetas de ServerStorage listos para precargar"):format(#ids, scanned)
-	)
+	-- Workspace en el servidor incluye lo que todavía no se streameó al cliente.
+	for _, root in { ServerStorage, workspace, Lighting, MaterialService } do
+		Assets.forEachAssetId(root, add)
+	end
+	for _, id in Assets.collect() do
+		add(id)
+	end
+	local function publish()
+		local ids = {}
+		for id in found do
+			local kind = Assets.Kinds[id] or { Class = "ImageLabel", Property = "Image" }
+			table.insert(ids, id .. "\t" .. kind.Class .. "\t" .. kind.Property)
+		end
+		table.sort(ids)
+		local m = RS:FindFirstChild("ServerAssetManifest") or Instance.new("StringValue")
+		m.Name = "ServerAssetManifest"
+		m.Value = table.concat(ids, "\n")
+		m.Parent = RS
+	end
+	publish()
+	local scheduled = false
+	local function added(o)
+		local changed = false
+		Assets.scanInstance(o, function(id)
+			if not found[id] then
+				found[id] = true
+				changed = true
+			end
+		end)
+		if changed and not scheduled then
+			scheduled = true
+			task.delay(0.5, function()
+				scheduled = false
+				publish()
+			end)
+		end
+	end
+	ServerStorage.DescendantAdded:Connect(added)
+	workspace.DescendantAdded:Connect(added)
 end
-
-return AssetManifestService
+return Service

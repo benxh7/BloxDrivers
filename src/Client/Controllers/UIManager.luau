@@ -3,6 +3,7 @@
 -- Un `CloseButton` dentro del Main (en cualquier nivel) se conecta solo a Close(name).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local Utils = script.Parent.Parent:WaitForChild("Utils")
 local UIEffects = require(Utils:WaitForChild("UIEffects"))
@@ -15,6 +16,8 @@ export type WindowOptions = {
 	-- Escala desde la que entra y hacia la que sale (0.1 = se abre desde el centro).
 	HiddenScale: number?,
 	OpenDuration: number?,
+	-- true = el botón B del mando la cierra (si el juego no consumió el input).
+	CloseOnButtonB: boolean?,
 }
 
 type Window = {
@@ -22,6 +25,7 @@ type Window = {
 	animate: boolean,
 	hiddenScale: number?,
 	openDuration: number?,
+	closeOnButtonB: boolean,
 	closeConnection: RBXScriptConnection?,
 }
 
@@ -47,6 +51,15 @@ end
 
 function UIManager.Init()
 	getPlayerGui()
+	UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+		if processed or input.KeyCode ~= Enum.KeyCode.ButtonB or not current then
+			return
+		end
+		local window = windows[current]
+		if window and window.closeOnButtonB then
+			UIManager.Close(current)
+		end
+	end)
 end
 
 -- Pasado el timeout avisa pero SIGUE esperando: las ScreenGuis se clonan recién cuando
@@ -79,6 +92,7 @@ function UIManager.Register(name: string, mainFrame: GuiObject, options: WindowO
 		animate = not (options and options.Animate == false),
 		hiddenScale = options and options.HiddenScale,
 		openDuration = options and options.OpenDuration,
+		closeOnButtonB = options ~= nil and options.CloseOnButtonB == true,
 		closeConnection = nil,
 	}
 

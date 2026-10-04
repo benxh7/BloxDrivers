@@ -20,11 +20,20 @@ local EVENTS = {
 
 	-- Tienda.
 	"RequestShopPurchase",
+
+	-- Espectador.
+	"SetSpectatorTarget",
 }
 
 local FUNCTIONS: { string } = {
+	-- Códigos.
+	"RedeemCode",
+
 	-- Tienda.
 	"GetShopOwned",
+
+	-- Espectador.
+	"SubmitPlayerReport",
 }
 
 local UPDATE_UI = "UpdateUI"

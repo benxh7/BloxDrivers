@@ -1,0 +1,16 @@
+{
+  "className": "ScreenGui",
+  "properties": {
+    "ResetOnSpawn": false,
+    "DisplayOrder": 150,
+    "IgnoreGuiInset": true,
+    "ZIndexBehavior": "Sibling",
+    "ScreenInsets": "DeviceSafeInsets"
+  },
+  "attributes": {
+    "AnimationTimeScale": 1.65,
+    "ZoomDegrees": 6,
+    "ChromaTransparency": 0.4,
+    "ChromaTurnSeconds": 6
+  }
+}
