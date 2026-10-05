@@ -137,7 +137,7 @@ function Controller.Init()
 		UIEffects.bindButton(card, function()
 			Controller.Claim(day)
 		end)
-		UIEffects.bindHover(card, { Scale = 1.025, Rotation = 0, Duration = 0.15 })
+		UIEffects.bindHover(card, { Scale = 1.05, Rotation = 5, Duration = 0.15 })
 	end
 	local setBlur = UIEffects.makeBlur("DailyBlur", 16, 0.2)
 	UIManager.Register("DailyRewards", main, { HiddenScale = 0.1, OpenDuration = 0.35, CloseOnButtonB = true })
@@ -147,7 +147,6 @@ function Controller.Init()
 			tween:Play()
 		end
 		setBlur(true)
-		UIEffects.playSound(Config.OpenSound, 0.5)
 	end)
 	UIManager.OnClosed("DailyRewards", function()
 		for _, tween in chromaTweens do

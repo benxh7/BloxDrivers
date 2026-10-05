@@ -6,7 +6,6 @@ Config.Icons = {
 	Gear = "rbxassetid://127247998973980",
 	Close = "rbxassetid://117755047033603",
 }
-Config.Sounds = ShopConfig.Sounds
 Config.Open = ShopConfig.Style.Open
 Config.Blur = ShopConfig.Style.Blur
 Config.Style = {

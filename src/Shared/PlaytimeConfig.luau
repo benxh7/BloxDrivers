@@ -3,7 +3,8 @@
 local Config = {}
 Config.HeaderIcon = "rbxassetid://79623377979473"
 Config.StudioTimeOffsetSeconds = 0 -- Solo Studio: 1200 permite revisar muchos READY.
-Config.OpenSound = "rbxassetid://139719503904449"
+-- Fracción de su lugar en la grilla que ocupa cada tarjeta (1 = sin aire, más bajo = más chica).
+Config.CardScale = 0.88
 Config.Rewards = {
 	{ Id = "Cash75", Title = "$75 Cash", Seconds = 0, Icon = "rbxassetid://105607438768052" },
 	{ Id = "Cash125", Title = "$125 Cash", Seconds = 60, Icon = "rbxassetid://133495653316055" },

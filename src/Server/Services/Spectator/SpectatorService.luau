@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local Config = require(RS:WaitForChild("SpectatorConfig"))
 local Settings = require(script.Parent.ReportConfig)
 local Policy = require(script.Parent.ReportPolicy)
+local ReportEmbed = require(script.Parent.ReportEmbed)
 local Remotes = require(RS:WaitForChild("Remotes"))
 local Service = {}
 -- Como mucho un cambio de objetivo cada tanto por jugador; el último pedido nunca se descarta.
@@ -92,23 +93,7 @@ local function submit(player, targetId, reason, details)
 		return finish(false, "NotConfigured")
 	end
 	-- Nombres e IDs salen del servidor; el texto del jugador es contenido sin verificar.
-	local payload = {
-		allowed_mentions = { parse = {} },
-		embeds = {
-			{
-				title = if debugReport then "[DEBUG TEST] Self-report" else "Player report (unverified)",
-				color = 16733264,
-				fields = {
-					{ name = "Reporter", value = player.Name .. " (" .. player.UserId .. ")", inline = true },
-					{ name = "Reported player", value = target.Name .. " (" .. targetId .. ")", inline = true },
-					{ name = "Reason", value = reason },
-					{ name = "Details", value = clean },
-					{ name = "Server", value = "Place: " .. game.PlaceId .. " | Job: " .. game.JobId },
-				},
-				timestamp = DateTime.now():ToIsoDate(),
-			},
-		},
-	}
+	local payload = ReportEmbed.build(player, target, reason, clean, debugReport)
 	local ok, response = pcall(function()
 		return Http:RequestAsync({
 			Url = webhook:AddSuffix("?wait=true"),

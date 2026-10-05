@@ -19,7 +19,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 -- Asset de UBG: si da error de permisos, resubirlo a esta cuenta.
 UIEffects.ClickSoundId = "rbxassetid://139719503904449"
-UIEffects.ClickVolume = 0.5
+UIEffects.ClickVolume = 1.0
 -- false = bindButton no suena al clickear.
 UIEffects.ClickSoundEnabled = true
 

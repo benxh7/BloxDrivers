@@ -389,6 +389,16 @@ local function styleButtonSkin(button: Instance, key: string)
 		local rim = rimStroke.Thickness
 		inner.Size = UDim2.new(1, -2 * rim, 1, -2 * rim)
 	end
+
+	-- CanvasGroup y no ClipsDescendants: el hover rota el botón y la rotación apaga ese recorte.
+	local dotsClip = button:FindFirstChild("DotsClip")
+	if dotsClip and dotsClip:IsA("GuiObject") then
+		dotsClip.Size = inner.Size
+		local dotsCorner = dotsClip:FindFirstChildOfClass("UICorner")
+		if dotsCorner then
+			dotsCorner.CornerRadius = UDim.new(buttonStyle.CornerRadius, 0)
+		end
+	end
 end
 
 local function styleBuyButton(card: GuiObject, itemId: string, item: ShopConfig.Item)
@@ -794,6 +804,13 @@ local function setOwned(itemId: string)
 	end
 end
 
+-- Escala de la apertura (UIScale del Main) medida en Content: sale del mismo layout que las
+-- posiciones absolutas, así que coincide con ellas aunque el UIScale ya haya avanzado.
+local function openScale(): number
+	local height = main.Size.Y.Offset + content.Size.Y.Offset
+	return if height > 0 then content.AbsoluteSize.Y / height else 1
+end
+
 -- A mano: dentro de un ScrollingFrame el padding en Scale se mide contra el canvas, y
 -- AutomaticCanvasSize dejaba afuera las últimas filas.
 local function bindCanvas()
@@ -804,7 +821,8 @@ local function bindCanvas()
 	end
 	content.AutomaticCanvasSize = Enum.AutomaticSize.None
 	local function fit()
-		local width = content.AbsoluteSize.X
+		-- Sin la escala de la apertura: si no, las filas se reacomodan mientras la ventana crece.
+		local width = content.AbsoluteSize.X / openScale()
 		local gap = math.floor(width * Style.Layout.RowGap)
 		local side = math.floor(width * Style.Layout.SidePadding)
 		local edge = math.floor(width * Style.Layout.EdgePadding)
@@ -815,7 +833,7 @@ local function bindCanvas()
 			padding.PaddingTop = UDim.new(0, edge)
 			padding.PaddingBottom = UDim.new(0, edge)
 		end
-		content.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + edge * 2)
+		content.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y / openScale() + edge * 2)
 	end
 	content:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
@@ -849,15 +867,28 @@ local function fitWindow()
 end
 
 local sectionRequest = 0
-local sectionTween: Tween?
+local sectionScroll: RBXScriptConnection?
 local function cancelSectionScroll()
 	sectionRequest += 1
-	if sectionTween then
-		sectionTween:Cancel()
-		sectionTween = nil
+	if sectionScroll then
+		sectionScroll:Disconnect()
+		sectionScroll = nil
 	end
 end
 
+-- CanvasPosition va en px escalados por la apertura. Absolute* es del frame anterior: se pasa
+-- a escala 1 con su propia escala (`measured`) y se vuelve a escalar con la actual del UIScale.
+local function sectionTarget(row: GuiObject, measured: number): number
+	local windowScale = main:FindFirstChild("WindowScale") :: UIScale?
+	local current = if windowScale then windowScale.Scale else 1
+	local viewport = content.AbsoluteWindowSize.Y / measured
+	local margin = math.clamp(viewport * 0.035, 12, 24)
+	local rowTop = (row.AbsolutePosition.Y - content.AbsolutePosition.Y + content.CanvasPosition.Y) / measured
+	local limit = math.max(0, content.AbsoluteCanvasSize.Y / measured - viewport)
+	return math.clamp(rowTop - margin, 0, limit) * current
+end
+
+-- Scroll suave (Quint) que arranca junto con la apertura, sin esperar a que termine.
 function ShopController.OpenSection(section: string)
 	local targetName = ({ Cash = "Cash10K", Gems = "Gems100" })[section]
 	if not targetName or not content then
@@ -865,40 +896,39 @@ function ShopController.OpenSection(section: string)
 	end
 	cancelSectionScroll()
 	local request = sectionRequest
-	local wasOpen = UIManager.IsOpen(WINDOW_NAME)
 	UIManager.Open(WINDOW_NAME)
 	closeGift()
-	task.spawn(function()
-		-- La animación de apertura mueve las posiciones absolutas: se mide cuando termina.
-		if not wasOpen then
-			task.wait(Style.Open.Duration + 0.08)
-		end
-		RunService.Heartbeat:Wait()
+	local card = cards[targetName]
+	if not card then
+		return true
+	end
+	-- La fila, no la tarjeta: el hover de la tarjeta la agranda y la gira.
+	local row = card.Parent.Parent
+	local start = content.CanvasPosition.Y
+	local startedAt = os.clock()
+	local duration: number? = nil
+	-- RenderStepped: el UIScale ya tiene el valor que se va a dibujar en este frame.
+	sectionScroll = RunService.RenderStepped:Connect(function()
 		if request ~= sectionRequest or not UIManager.IsOpen(WINDOW_NAME) then
+			cancelSectionScroll()
 			return
 		end
-		local card = cards[targetName]
-		if not card then
+		local scale = openScale()
+		if scale < 0.05 then
 			return
 		end
-		-- La fila, no la tarjeta: el hover de la tarjeta la agranda y la gira.
-		local row = card.Parent.Parent
-		local margin = math.clamp(content.AbsoluteSize.Y * 0.035, 12, 24)
-		local y = row.AbsolutePosition.Y - content.AbsolutePosition.Y + content.CanvasPosition.Y - margin
-		local limit = math.max(0, content.AbsoluteCanvasSize.Y - content.AbsoluteWindowSize.Y)
-		local target = Vector2.new(0, math.clamp(y, 0, limit))
-		local distance = math.abs(target.Y - content.CanvasPosition.Y)
-		if distance < 1 then
-			content.CanvasPosition = target
-			return
+		local target = sectionTarget(row, scale)
+		duration = duration or math.clamp(math.abs(target - start) / 3500, 0.3, 0.65)
+		local alpha = math.clamp((os.clock() - startedAt) / duration, 0, 1)
+		local eased = 1 - (1 - alpha) ^ 5
+		content.CanvasPosition = Vector2.new(0, start + (target - start) * eased)
+		-- Sigue corrigiendo hasta que termine la apertura (UIScale "WindowScale" de UIEffects en 1);
+		-- el tope evita quedar pegado si algo deja la escala distinta de 1.
+		local windowScale = main:FindFirstChild("WindowScale") :: UIScale?
+		local opened = not windowScale or windowScale.Scale == 1
+		if alpha >= 1 and (opened or os.clock() - startedAt > duration + 1) then
+			cancelSectionScroll()
 		end
-		local duration = math.clamp(distance / 3500, 0.3, 0.65)
-		sectionTween = TweenService:Create(
-			content,
-			TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ CanvasPosition = target }
-		)
-		sectionTween:Play()
 	end)
 	return true
 end

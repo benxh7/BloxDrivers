@@ -66,14 +66,20 @@ local READY_TEXT = "Ready! (100%)"
 local MIN_DISPLAY_TIME = 2
 local SKIP_TEXT = "Skip Loading"
 local PLAY_TEXT = "Play"
--- Al 100% se apaga el UIGradient del botón: multiplica al BackgroundColor3 y ensuciaría el verde.
-local PLAY_BUTTON_COLOR = Color3.fromRGB(46, 204, 113)
+-- Degradé de PLAY (arriba, medio, abajo): el mismo verde que el botón de compra de la tienda.
+local PLAY_BUTTON_COLORS = { Color3.fromRGB(145, 255, 45), Color3.fromRGB(30, 245, 10), Color3.fromRGB(0, 190, 0) }
+-- Cuánto se aclara el degradé en el Rim (0..1), igual que ShopConfig.ButtonStyle.RimLighten.
+local PLAY_RIM_LIGHTEN = 0.55
 local PLAY_BUTTON_TINT_SECONDS = 0.4
 -- DROP en escala del padre.
 local PLAY_BUTTON_GROW = 1.12
 local PLAY_BUTTON_DROP = 0.035
 local PLAY_BUTTON_REVEAL_SECONDS = 0.5
 local HOVER_SCALE = 1.06
+-- Grados a la derecha con hover, como los botones del resto del juego.
+local HOVER_ROTATION = 5
+-- El UIGradient multiplica al BackgroundColor3: más oscuro = más sombreado con hover.
+local HOVER_SHADE = Color3.fromRGB(195, 195, 195)
 local HOVER_SECONDS = 0.15
 
 -- Assets de UBG. Acá va una CANCIÓN en loop: el whoosh de la ola ya suena solo en
@@ -211,17 +217,22 @@ local function attachHover(button: GuiButton)
 	local scale = button:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
 	scale.Parent = button
 
-	local function tweenTo(target: number)
-		TweenService:Create(scale, TweenInfo.new(HOVER_SECONDS, Enum.EasingStyle.Quad), {
-			Scale = target,
+	local baseRotation = button.Rotation
+	local baseColor = button.BackgroundColor3
+	local function tweenTo(hovered: boolean)
+		local info = TweenInfo.new(HOVER_SECONDS, Enum.EasingStyle.Quad)
+		TweenService:Create(scale, info, { Scale = if hovered then HOVER_SCALE else 1 }):Play()
+		TweenService:Create(button, info, {
+			Rotation = baseRotation + (if hovered then HOVER_ROTATION else 0),
+			BackgroundColor3 = if hovered then HOVER_SHADE else baseColor,
 		}):Play()
 	end
 
 	button.MouseEnter:Connect(function()
-		tweenTo(HOVER_SCALE)
+		tweenTo(true)
 	end)
 	button.MouseLeave:Connect(function()
-		tweenTo(1)
+		tweenTo(false)
 	end)
 end
 
@@ -231,51 +242,54 @@ for _, descendant in center:GetDescendants() do
 	end
 end
 
--- Mismos keypoints que el original: lerpSequence recorre las dos en paralelo.
-local function solidVersionOf(sequence: ColorSequence, color: Color3): ColorSequence
+-- Muestrea `from` en los mismos tiempos que `colors`: así se interpolan punto a punto.
+local function lerpToColors(from: ColorSequence, colors: { Color3 }, alpha: number): ColorSequence
 	local keypoints = {}
-	for _, keypoint in sequence.Keypoints do
-		table.insert(keypoints, ColorSequenceKeypoint.new(keypoint.Time, color))
+	for index, color in colors do
+		local time = (index - 1) / (#colors - 1)
+		local start = from.Keypoints[1].Value
+		for i = 1, #from.Keypoints - 1 do
+			local a, b = from.Keypoints[i], from.Keypoints[i + 1]
+			if time >= a.Time and time <= b.Time then
+				start = a.Value:Lerp(b.Value, (time - a.Time) / math.max(b.Time - a.Time, 1e-3))
+				break
+			end
+		end
+		table.insert(keypoints, ColorSequenceKeypoint.new(time, start:Lerp(color, alpha)))
 	end
 	return ColorSequence.new(keypoints)
 end
 
-local function lerpSequence(from: ColorSequence, to: ColorSequence, alpha: number): ColorSequence
-	local keypoints = {}
-	for index, keypoint in from.Keypoints do
-		local target = to.Keypoints[index]
-		table.insert(keypoints, ColorSequenceKeypoint.new(keypoint.Time, keypoint.Value:Lerp(target.Value, alpha)))
-	end
-	return ColorSequence.new(keypoints)
-end
-
-local function tintButtonGreen()
-	TweenService:Create(actionButton, TweenInfo.new(PLAY_BUTTON_TINT_SECONDS, Enum.EasingStyle.Quad), {
-		BackgroundColor3 = PLAY_BUTTON_COLOR,
-	}):Play()
-
-	local gradient = actionButton:FindFirstChildOfClass("UIGradient")
+-- ColorSequence no se puede tweenear: se interpola a mano, cuadro a cuadro.
+local function tweenGradient(gradient: UIGradient?, colors: { Color3 })
 	if not gradient then
 		return
 	end
-
-	-- Se lleva a blanco (no tiñe) antes de apagarlo: si no, salto de color. ColorSequence
-	-- no se puede tweenear: se interpola a mano.
 	local from = gradient.Color
-	local to = solidVersionOf(from, Color3.new(1, 1, 1))
 	task.spawn(function()
 		local startedAt = os.clock()
 		while gradient.Parent do
 			local alpha = math.min((os.clock() - startedAt) / PLAY_BUTTON_TINT_SECONDS, 1)
-			gradient.Color = lerpSequence(from, to, alpha)
+			gradient.Color = lerpToColors(from, colors, alpha)
 			if alpha >= 1 then
 				break
 			end
 			task.wait()
 		end
-		-- Enabled y no Destroy: no se toca lo armado en Studio.
-		gradient.Enabled = false
 	end)
+end
+
+local function tintButtonGreen()
+	tweenGradient(actionButton:FindFirstChildOfClass("UIGradient"), PLAY_BUTTON_COLORS)
+	local inner = actionButton:FindFirstChild("Inner")
+	local rim = inner and inner:FindFirstChildOfClass("UIStroke")
+	if rim then
+		local rimColors = {}
+		for index, color in PLAY_BUTTON_COLORS do
+			rimColors[index] = color:Lerp(Color3.new(1, 1, 1), PLAY_RIM_LIGHTEN)
+		end
+		tweenGradient(rim:FindFirstChildOfClass("UIGradient"), rimColors)
+	end
 end
 
 local animatedTexture = background:FindFirstChild("AnimatedTexture")

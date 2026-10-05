@@ -134,6 +134,7 @@ function Controller.Init()
 		card.Name = item.Id
 		card.Title.Text = item.CardTitle or item.Title
 		card.Icon.Image = item.Icon
+		card.Size = UDim2.fromScale(Config.CardScale, Config.CardScale)
 		card.Parent = slot
 		if item.IconCount == 2 then
 			card.Icon.Size = UDim2.fromScale(0.52, 0.63)
@@ -147,14 +148,13 @@ function Controller.Init()
 		UIEffects.bindButton(card, function()
 			Controller.Claim(item.Id)
 		end)
-		UIEffects.bindHover(card, { Scale = 1.025, Rotation = 0, Duration = 0.15 })
+		UIEffects.bindHover(card, { Scale = 1.05, Rotation = 5, Duration = 0.15 })
 		updateCard(item.Id)
 	end
 	local setBlur = UIEffects.makeBlur("PlaytimeBlur", 16, 0.2)
 	UIManager.Register("PlaytimeRewards", main, { HiddenScale = 0.1, OpenDuration = 0.35, CloseOnButtonB = true })
 	UIManager.OnOpened("PlaytimeRewards", function()
 		setBlur(true)
-		UIEffects.playSound(Config.OpenSound, 0.5)
 	end)
 	UIManager.OnClosed("PlaytimeRewards", function()
 		setBlur(false)

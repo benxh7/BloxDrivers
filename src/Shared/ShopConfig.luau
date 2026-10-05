@@ -148,10 +148,11 @@ ShopConfig.Style = {
 
 ShopConfig.SpinDecal = { Image = "rbxassetid://122287190167781", SecondsPerTurn = 12, Transparency = 0.15 }
 
--- Suenan juntos al abrir la tienda.
+-- Campana + swoosh: exclusivos de la tienda, suenan juntos al abrirla. El resto de las
+-- ventanas solo tienen el clic del botón.
 ShopConfig.Sounds = {
 	Open = { "rbxassetid://127488139302452", "rbxassetid://98891178613563" },
-	Volume = 0.5,
+	Volume = 1.0,
 }
 
 -- Muestra el selector de destinatario. Los ProductId en 0 mantienen el catálogo como demo.

@@ -4,7 +4,6 @@ local Config = {}
 Config.HeaderIcon = "rbxassetid://130147541805143"
 Config.DaySeconds = 86400 -- Espera desde la última reclamación. Editable para la demo.
 Config.StudioClaimedDays = 0 -- Vista de ejemplo: 3 muestra Day 4 READY.
-Config.OpenSound = "rbxassetid://139719503904449"
 Config.Rewards = {
 	{ Title = "$150 Cash", Icon = "rbxassetid://105607438768052" },
 	{ Title = "$250 Cash", Icon = "rbxassetid://133495653316055" },

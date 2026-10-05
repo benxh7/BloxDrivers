@@ -8,4 +8,15 @@ return {
 	CooldownSeconds = 60, -- por reportero + objetivo, en este servidor
 	AttemptInterval = 2,
 	StudioDryRun = false, -- sin secreto: en Studio solo valida, nunca dice "enviado"
+	-- Avatar busto del reportado (%d = UserId). roproxy porque el servidor no puede llamar a roblox.com.
+	ThumbnailApi = "https://thumbnails.roproxy.com/v1/users/avatar-bust?userIds=%d&size=420x420&format=Png&isCircular=false",
+	Embed = {
+		Color = 0xF5D90A, -- barra lateral del mensaje
+		Header = "Player report (unverified)",
+		DebugHeader = "[DEBUG TEST] Self-report",
+		ReasonEmoji = "🚩",
+		Footnote = "Can a staff member review this?",
+		-- Imagen ancha debajo del mensaje (URL https pública). "" = sin banner.
+		BannerUrl = "",
+	},
 }

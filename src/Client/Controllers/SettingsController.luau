@@ -27,7 +27,6 @@ local activeDrag = nil
 local cameraConnection
 local musicGroups = {}
 local baseGroupVolumes = {}
-local openSounds = {}
 local toggleSound: Sound?
 for _, item in Config.Rows do
 	definitions[item.Id] = item
@@ -457,27 +456,16 @@ function Controller.Init()
 		player:SetAttribute("Settings_" .. id, value)
 	end
 	setBlur = UIEffects.makeBlur("SettingsBlur", Config.Blur.Size, Config.Blur.Duration)
-	for index, id in Config.Sounds.Open do
-		local sound = UIEffects.makeSound("SettingsOpen" .. index, id, Config.Sounds.Volume)
-		if sound then
-			table.insert(openSounds, sound)
-		end
-	end
-	local preloadSounds = table.clone(openSounds)
 	if toggleSound then
-		table.insert(preloadSounds, toggleSound)
+		task.spawn(function()
+			pcall(ContentProvider.PreloadAsync, ContentProvider, { toggleSound })
+		end)
 	end
-	task.spawn(function()
-		pcall(ContentProvider.PreloadAsync, ContentProvider, preloadSounds)
-	end)
 	UIManager.Register("Settings", main, { HiddenScale = Config.Open.FromScale, OpenDuration = Config.Open.Duration })
 	UIManager.OnOpened("Settings", function()
 		overlay.Visible = false
 		content.Visible = true
 		setBlur(true)
-		for _, sound in openSounds do
-			UIEffects.playOneShot(sound)
-		end
 	end)
 	UIManager.OnClosed("Settings", function()
 		endDrag()
