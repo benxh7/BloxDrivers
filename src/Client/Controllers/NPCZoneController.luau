@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local NPCConfig = require(ReplicatedStorage:WaitForChild("NPCConfig"))
 local SimulatorCircleConfig = require(ReplicatedStorage:WaitForChild("SimulatorCircleConfig"))
+local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
 local NPCZoneController = {}
 
@@ -35,22 +36,49 @@ local function setInside(zone: Zone, inside: boolean)
 	end
 end
 
-local function onNPCAdded(npc: Model, ring: Model)
-	local settings = NPCConfig.get(npc)
+local function measureZone(npc: Model, ring: Model, zone: Zone, zoneRadius: number)
 	local bounds = SimulatorCircleConfig.measure(ring)
 	local pivot = npc:GetPivot().Position
 	local center = if bounds then Vector2.new(bounds.centerX, bounds.centerZ) else Vector2.new(pivot.X, pivot.Z)
+	local radius = if zoneRadius > 0 then zoneRadius else (if bounds then bounds.radius else FALLBACK_RADIUS)
+	if zone.x == center.X and zone.z == center.Y and zone.radius == radius then
+		return
+	end
+	zone.x, zone.z, zone.radius = center.X, center.Y, radius
+	DebugConfig.print(
+		("[NPCZone] %s -> %s (radius %.1f%s)"):format(
+			npc.Name,
+			if zone.window ~= "" then zone.window else "no window",
+			radius,
+			if bounds then "" else ", ring not loaded yet"
+		)
+	)
+end
 
-	zones[npc] = {
-		x = center.X,
-		z = center.Y,
-		-- Sale de la geometría del aro, salvo que el Config pida un radio propio.
-		radius = if settings.ZoneRadius > 0
-			then settings.ZoneRadius
-			else (if bounds then bounds.radius else FALLBACK_RADIUS),
-		window = settings.Gui,
-		inside = false,
-	}
+local function onNPCAdded(npc: Model, ring: Model)
+	local settings = NPCConfig.get(npc)
+	local zone: Zone = { x = 0, z = 0, radius = 0, window = settings.Gui, inside = false }
+	zones[npc] = zone
+	measureZone(npc, ring, zone, settings.ZoneRadius)
+
+	-- Con StreamingEnabled el aro llega al cliente de a partes y puede llegar después que el
+	-- NPC: se vuelve a medir con cada parte nueva (agrupado en un solo cálculo por frame).
+	local pending = false
+	local connection
+	connection = ring.DescendantAdded:Connect(function(descendant)
+		if not npc.Parent then
+			connection:Disconnect()
+			return
+		end
+		if pending or not descendant:IsA("BasePart") then
+			return
+		end
+		pending = true
+		task.defer(function()
+			pending = false
+			measureZone(npc, ring, zone, settings.ZoneRadius)
+		end)
+	end)
 end
 
 local function sample()

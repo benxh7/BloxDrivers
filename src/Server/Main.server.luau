@@ -5,6 +5,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 -- Antes que los servicios: un cliente nunca espera un remote que todavía no existe.
 require(ReplicatedStorage:WaitForChild("Remotes"))
+local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
 local Services = ServerScriptService:WaitForChild("Services")
 
@@ -45,7 +46,9 @@ for _, entry in loaded do
 			local ok, err = xpcall(service.Init, debug.traceback)
 			if not ok then
 				warn(("[Main] %s.Init falló:\n%s"):format(entry.name, tostring(err)))
+				return
 			end
+			DebugConfig.print(("[%s] Loaded"):format(entry.name))
 		end)
 	end
 end

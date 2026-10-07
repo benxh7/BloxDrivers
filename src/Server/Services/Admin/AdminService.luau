@@ -10,14 +10,38 @@ local Remotes = require(RS:WaitForChild("Remotes"))
 local DebugConfig = require(RS:WaitForChild("DebugConfig"))
 local Ranks = require(script.Parent.AdminRanks)
 local Broadcast = require(script.Parent.AdminBroadcast)
+local LogService = require(script.Parent.Parent:WaitForChild("Logs"):WaitForChild("LogService"))
 
 local Service = {}
 
 local TOPIC = "AdminModeration"
+-- Acciones que quedan en el log de Staff de quien las hace (auditoría del propio staff).
+local STAFF_ACTIONS = {
+	Announce = true,
+	ServerMessage = true,
+	StartPoll = true,
+	EndPoll = true,
+	Kick = true,
+	Warn = true,
+	Ban = true,
+	Unban = true,
+	Teleport = true,
+	Bring = true,
+	Grant = true,
+	Revoke = true,
+}
 -- Distancia (studs) a la que queda el que se teletransporta respecto del otro.
 local TELEPORT_OFFSET = CFrame.new(0, 0, 4)
 
-type Result = { Ok: boolean, Message: string, Data: any? }
+-- TargetLog va al log de Moderation del afectado y StaffLog al de Staff de quien la hizo
+-- (sin StaffLog se usa Message). Se sacan antes de responder al cliente.
+type Result = {
+	Ok: boolean,
+	Message: string,
+	Data: any?,
+	TargetLog: { UserId: number, Text: string }?,
+	StaffLog: string?,
+}
 type Target = { UserId: number, Name: string, Player: Player? }
 
 local function reply(ok: boolean, message: string, data: any?): Result
@@ -179,7 +203,9 @@ function Actions.Announce(admin, payload)
 	if not text then
 		return reply(false, "Write a message first")
 	end
-	return reply(Broadcast.Announce(admin, text, payload.Global == true))
+	local result = reply(Broadcast.Announce(admin, text, payload.Global == true))
+	result.StaffLog = "Announced: " .. text
+	return result
 end
 
 function Actions.ServerMessage(admin, payload)
@@ -190,7 +216,9 @@ function Actions.ServerMessage(admin, payload)
 	if not text then
 		return reply(false, "Write a message first")
 	end
-	return reply(Broadcast.ServerMessage(admin, text, payload.Global == true))
+	local result = reply(Broadcast.ServerMessage(admin, text, payload.Global == true))
+	result.StaffLog = "Server message: " .. text
+	return result
 end
 
 function Actions.StartPoll(admin, payload)
@@ -220,7 +248,9 @@ function Actions.StartPoll(admin, payload)
 	if #options < Config.Limits.PollMinOptions then
 		return reply(false, ("A poll needs at least %d options"):format(Config.Limits.PollMinOptions))
 	end
-	return reply(Broadcast.StartPoll(admin, question, options, seconds, payload.Global == true))
+	local result = reply(Broadcast.StartPoll(admin, question, options, seconds, payload.Global == true))
+	result.StaffLog = "Started poll: " .. question
+	return result
 end
 
 function Actions.EndPoll()
@@ -240,7 +270,11 @@ local function sanction(kind: string)
 			return tooLongReply("Reason", Config.Limits.Reason)
 		end
 		local reason = cleanText(payload.Reason, Config.Limits.Reason) or "No reason given"
-		return moderate(kind, admin, target, reason)
+		local result = moderate(kind, admin, target, reason)
+		local verb = if kind == "Kick" then "Kicked" else "Warned"
+		result.TargetLog = { UserId = target.UserId, Text = ("%s by @%s · %s"):format(verb, admin.Name, reason) }
+		result.StaffLog = ("%s @%s · %s"):format(verb, target.Name, reason)
+		return result
 	end
 end
 Actions.Kick = sanction("Kick")
@@ -275,10 +309,16 @@ function Actions.Ban(admin, payload)
 		DebugConfig.warn("[AdminService] BanAsync falló: " .. tostring(err))
 		return reply(false, "Ban failed: " .. tostring(err))
 	end
-	return reply(true, ("Banned %s %s"):format(target.Name, describe(duration)))
+	local result = reply(true, ("Banned %s %s"):format(target.Name, describe(duration)))
+	result.TargetLog = {
+		UserId = target.UserId,
+		Text = ("Banned %s by @%s · %s"):format(describe(duration), admin.Name, reason),
+	}
+	result.StaffLog = ("Banned @%s %s · %s"):format(target.Name, describe(duration), reason)
+	return result
 end
 
-function Actions.Unban(_admin, payload)
+function Actions.Unban(admin, payload)
 	local target = resolve(payload.Target)
 	if not target then
 		return reply(false, "Player not found")
@@ -287,7 +327,9 @@ function Actions.Unban(_admin, payload)
 	if not ok then
 		return reply(false, "Unban failed: " .. tostring(err))
 	end
-	return reply(true, "Unbanned " .. target.Name)
+	local result = reply(true, "Unbanned " .. target.Name)
+	result.TargetLog = { UserId = target.UserId, Text = "Unbanned by @" .. admin.Name }
+	return result
 end
 
 local function pivotTo(mover: Player, anchor: Player): boolean
@@ -330,7 +372,12 @@ function Actions.Bring(admin, payload)
 	if not outranks(admin, target.UserId) then
 		return reply(false, "You can't bring " .. target.Name)
 	end
-	return if pivotTo(target.Player, admin) then reply(true, "Brought " .. target.Name) else reply(false, "Character not loaded")
+	if not pivotTo(target.Player, admin) then
+		return reply(false, "Character not loaded")
+	end
+	local result = reply(true, "Brought " .. target.Name)
+	result.TargetLog = { UserId = target.UserId, Text = "Brought by @" .. admin.Name }
+	return result
 end
 
 function Actions.Grant(admin, payload)
@@ -358,7 +405,12 @@ function Actions.Grant(admin, payload)
 	if not ok then
 		return reply(false, err or "Could not save")
 	end
-	return reply(true, ("%s is now %s"):format(target.Name, Config.Ranks[rank].Label))
+	local result = reply(true, ("%s is now %s"):format(target.Name, Config.Ranks[rank].Label))
+	result.TargetLog = {
+		UserId = target.UserId,
+		Text = ("Given rank %s by @%s"):format(Config.Ranks[rank].Label, admin.Name),
+	}
+	return result
 end
 
 function Actions.Revoke(admin, payload)
@@ -369,12 +421,17 @@ function Actions.Revoke(admin, payload)
 	if Ranks.IsOwner(userId) or not outranks(admin, userId) then
 		return reply(false, "You can't revoke that rank")
 	end
-	local name = Ranks.Entry(userId).Name
+	local entry = Ranks.Entry(userId)
 	local ok, err = Ranks.Remove(userId)
 	if not ok then
 		return reply(false, err or "Could not save")
 	end
-	return reply(true, "Revoked " .. name .. "'s rank")
+	local result = reply(true, "Revoked " .. entry.Name .. "'s rank")
+	result.TargetLog = {
+		UserId = userId,
+		Text = ("Rank %s revoked by @%s"):format(Config.Ranks[entry.Rank].Label, admin.Name),
+	}
+	return result
 end
 
 -- Búsqueda del Player Panel. "Other" = conectado en otro servidor (solo en el juego publicado).
@@ -400,6 +457,18 @@ function Actions.Lookup(_admin, payload)
 		Status = status,
 		Rank = Ranks.Get(target.UserId),
 	})
+end
+
+function Actions.ViewLogs(_admin, payload)
+	local userId = tonumber(payload.UserId)
+	if not userId or userId % 1 ~= 0 or userId == 0 then
+		return reply(false, "Player not found")
+	end
+	local logs = LogService.Get(userId)
+	if not logs then
+		return reply(false, "Could not load logs, try again")
+	end
+	return reply(true, "", logs)
 end
 
 function Actions.ListAdmins()
@@ -468,6 +537,16 @@ function Service.Init()
 			return reply(false, "Something went wrong")
 		end
 		DebugConfig.print(("[AdminService] %s -> %s: %s"):format(admin.Name, action, result.Message))
+		if result.Ok then
+			if result.TargetLog then
+				LogService.Add(result.TargetLog.UserId, "Moderation", result.TargetLog.Text)
+			end
+			if STAFF_ACTIONS[action] then
+				LogService.Add(admin.UserId, "Staff", result.StaffLog or result.Message)
+			end
+		end
+		result.TargetLog = nil
+		result.StaffLog = nil
 		return result
 	end, 0.3)
 end

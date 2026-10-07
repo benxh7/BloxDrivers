@@ -126,6 +126,17 @@ function Controller.Init()
 				)
 			end
 		end
+		if item.SpinDecal then
+			card.SpinDecal.Visible = true
+			table.insert(
+				chromaTweens,
+				TweenService:Create(
+					card.SpinDecal,
+					TweenInfo.new(Config.SpinSecondsPerTurn, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
+					{ Rotation = 360 }
+				)
+			)
+		end
 		if item.IconCount == 2 then
 			card.Icon.Size = UDim2.fromScale(0.60, 0.58)
 			card.Icon.Position = UDim2.fromScale(0.34, 0.34)

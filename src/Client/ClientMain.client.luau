@@ -1,5 +1,8 @@
 -- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > ClientMain (LocalScript)
 -- Arranca UIManager y después todo ModuleScript de `Controllers` (ignora los "_*").
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 local Controllers = script.Parent:WaitForChild("Controllers")
 
 local FIRST = "UIManager"
@@ -20,7 +23,10 @@ local function init(name: string, controller: any)
 	local ok, err = xpcall(controller.Init, debug.traceback)
 	if not ok then
 		warn(("[ClientMain] %s.Init falló:\n%s"):format(name, tostring(err)))
+		return
 	end
+	-- Sale cuando Init TERMINA: uno que se queda esperando su GUI nunca dice Loaded.
+	DebugConfig.print(("[%s] Loaded"):format(name))
 end
 
 -- Sincrónico: los demás controllers lo usan en su Init.

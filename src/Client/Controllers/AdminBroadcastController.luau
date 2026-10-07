@@ -65,9 +65,9 @@ local function voiceFor(userId: number): Sound?
 	return voices[preset.Sound]
 end
 
-local function speak(voice: Sound?)
+local function speak(voice: Sound?, pitch: number?)
 	if voice then
-		local base = voice:GetAttribute("BasePitch") or 1
+		local base = (voice:GetAttribute("BasePitch") or 1) * (pitch or 1)
 		voice.PlaybackSpeed = base * (1 + (math.random() * 2 - 1) * Config.Voice.PitchVariation)
 		voice.TimePosition = 0
 		voice:Play()
@@ -80,11 +80,27 @@ end
 -- (AutomaticSize) toma su alto final antes de aparecer y no salta mientras escribe.
 local function typeText(label: TextLabel, text: string, voice: Sound?)
 	local typing = Config.Typing
-	local shown, spoken = 0, 0
+	local chars = {}
+	local letters = 0
 	for first, last in utf8.graphemes(text) do
-		shown += 1
-		label.MaxVisibleGraphemes = shown
 		local char = text:sub(first, last)
+		table.insert(chars, char)
+		if not char:match("^[%s%p]+$") then
+			letters += 1
+		end
+	end
+	-- Pocas letras = más lento, como un personaje que duda.
+	local slowdown = math.clamp(typing.ShortLetters / math.max(letters, 1), 1, typing.MaxSlowdown)
+	local spoken = 0
+	for index, char in chars do
+		label.MaxVisibleGraphemes = index
+		local isEllipsis = char == "…"
+			or char == "." and (chars[index - 1] == "." or chars[index + 1] == ".")
+		if isEllipsis then
+			speak(voice, typing.DotPitch)
+			task.wait(typing.DotDelay)
+			continue
+		end
 		local isPunctuation = char:match("^[%.,!%?;:]$") ~= nil
 		if not char:match("^[%s%p]+$") then
 			if spoken % Config.Voice.SoundEvery == 0 then
@@ -92,7 +108,7 @@ local function typeText(label: TextLabel, text: string, voice: Sound?)
 			end
 			spoken += 1
 		end
-		task.wait(typing.LetterDelay * (if isPunctuation then typing.PunctuationPause else 1))
+		task.wait(typing.LetterDelay * slowdown * (if isPunctuation then typing.PunctuationPause else 1))
 	end
 	label.MaxVisibleGraphemes = -1
 end

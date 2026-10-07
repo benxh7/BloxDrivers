@@ -5,7 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local Utils = script.Parent.Parent:WaitForChild("Utils")
 local UIEffects = require(Utils:WaitForChild("UIEffects"))
-local MobileHUDLayout = require(Utils:WaitForChild("MobileHUDLayout"))
+local MobileScaler = require(Utils:WaitForChild("MobileScaler"))
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
 
 local HUDController = {}
@@ -48,7 +48,7 @@ function HUDController.Init()
 		return
 	end
 
-	MobileHUDLayout.Attach(gui)
+	MobileScaler.Attach(gui)
 	for buttonName, windowName in BUTTONS do
 		local button = gui:FindFirstChild(buttonName, true)
 		if button and button:IsA("GuiButton") then

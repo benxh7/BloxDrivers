@@ -227,12 +227,13 @@ local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 	end
 
 	if item.SpinDecal and background then
-		local decal = card:FindFirstChild("SpinDecal")
+		-- Va dentro de SpinClip (CanvasGroup con la forma de la card): no se sale de la tarjeta.
+		local decal = card:FindFirstChild("SpinDecal", true)
 		if decal then
+			decal.Parent.Visible = true
 			decal.Visible = true
 			decal.Image = ShopConfig.SpinDecal.Image
 			decal.ImageTransparency = ShopConfig.SpinDecal.Transparency
-			decal.Position = if item.IconLayout then item.IconLayout.Position else UDim2.fromScale(0.5, 0.55)
 			local tween = TweenService:Create(
 				decal,
 				TweenInfo.new(
@@ -255,6 +256,13 @@ local function styleBackground(card: GuiObject, item: ShopConfig.Item)
 		icon.Image = item.Icon or ""
 		if item.IconLayout then
 			applyProps(icon, item.IconLayout)
+		end
+		local decal = card:FindFirstChild("SpinDecal", true)
+		if item.SpinDecal and decal then
+			-- Sigue al ícono: con un tamaño fijo, los íconos grandes (packs) tapaban los rayos.
+			local scale = ShopConfig.SpinDecal.Scale
+			decal.Position = icon.Position
+			decal.Size = UDim2.fromScale(icon.Size.X.Scale * scale, icon.Size.Y.Scale * scale)
 		end
 		-- Cada paquete usa su ilustración completa desde ShopConfig.
 		local rewardType = item.Reward and item.Reward.Type

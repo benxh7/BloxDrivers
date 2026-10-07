@@ -52,6 +52,9 @@ local function buildBillboard(model: Model, settings)
 	billboard.Name = BILLBOARD_NAME
 	billboard.Size = UDim2.fromOffset(style.WidthPixels, style.HeightPixels)
 	billboard.StudsOffset = Vector3.new(0, settings.BillboardHeight, 0)
+	-- Apoyado por el borde de abajo: medido en px, de lejos el cartel ocupa más studs y,
+	-- centrado, su mitad inferior se hundía en la cabeza del NPC.
+	billboard.SizeOffset = Vector2.new(0, 0.5)
 	billboard.MaxDistance = style.MaxDistance
 	-- false = se tapa detrás de las paredes, como los nombres de los jugadores.
 	billboard.AlwaysOnTop = false
@@ -85,6 +88,7 @@ local function buildBillboard(model: Model, settings)
 	end
 
 	billboard.Parent = head
+	DebugConfig.print(('[NPCBillboard] %s -> "%s"'):format(model.Name, settings.Title))
 end
 
 -- Si no, quedan el cartel nativo y el nuestro encimados. `None` apaga nombre y barra de vida.

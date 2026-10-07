@@ -14,6 +14,10 @@ local STORE_NAME = "PlayerData_v1"
 DataService.Template = {
 	-- Rango del Admin Panel. Rank "" = sin rango. UpdatedAt ordena cambios que llegan por mensaje.
 	Admin = { Rank = "", GrantedBy = 0, GrantedByName = "", GrantedAt = 0, UpdatedAt = 0 },
+	-- Reportes recibidos. Reporters = { [userId string] = true }; AlertedAt = Unique del último aviso.
+	Reports = { Total = 0, Unique = 0, Reporters = {}, AlertedAt = 0 },
+	-- Logs del Admin Panel: { [categoría] = { { At, Text }, ... } }, el más nuevo primero.
+	Logs = { Purchase = {}, Moderation = {}, Report = {}, Code = {}, Session = {}, Staff = {} },
 }
 
 -- EasyProfileStore usa UN solo store: lo crea este módulo al requerirse (antes de cualquier

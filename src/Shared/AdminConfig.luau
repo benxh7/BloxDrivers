@@ -38,6 +38,34 @@ Config.Permissions = {
 	ListAdmins = 1,
 	Inspect = 1,
 	Lookup = 1,
+	ViewLogs = 1,
+}
+
+-- Logs por jugador (en su perfil). Cada categoría guarda las últimas MaxPerCategory entradas.
+Config.Logs = {
+	MaxPerCategory = 50,
+	-- Cada cuánto se actualiza la duración de la sesión en curso.
+	SessionUpdateSeconds = 60,
+	-- Orden de las pestañas del Player Panel. `Button` es el botón dentro de LogsCard e `Icon`
+	-- la imagen de las entradas que no traen una propia (las compras usan la del producto).
+	Categories = {
+		{ Id = "Purchase", Button = "PurchaseTab", Palette = "Green", Icon = "rbxassetid://74016484606228" },
+		{ Id = "Moderation", Button = "ModerationTab", Palette = "Red", Icon = "rbxassetid://84416250652005" },
+		{ Id = "Report", Button = "ReportTab", Palette = "Orange", Icon = "rbxassetid://91917957775118" },
+		{ Id = "Code", Button = "CodeTab", Palette = "Purple", Icon = "rbxassetid://76717751961083" },
+		{ Id = "Session", Button = "SessionTab", Palette = "Blue", Icon = "rbxassetid://117339607031815" },
+		{ Id = "Staff", Button = "StaffTab", Palette = "Blue", Icon = "rbxassetid://84416250652005" },
+	},
+	-- Pestaña que junta todas las categorías, ordenadas por fecha.
+	All = { Button = "AllTab", Palette = "Orange" },
+	-- Opciones del botón de período, en el orden en que cicla. Days = nil: sin filtro;
+	-- Days = 0: desde la medianoche de hoy (hora local del que mira).
+	Periods = {
+		{ Label = "ALL TIME", Days = nil },
+		{ Label = "TODAY", Days = 0 },
+		{ Label = "LAST 7 DAYS", Days = 7 },
+		{ Label = "LAST 30 DAYS", Days = 30 },
+	},
 }
 
 Config.Limits = {
@@ -109,6 +137,12 @@ Config.Voice = {
 Config.Typing = {
 	LetterDelay = 0.04,
 	PunctuationPause = 5,
+	-- Mensajes con menos de ShortLetters letras se escriben más lento, hasta MaxSlowdown veces.
+	ShortLetters = 20,
+	MaxSlowdown = 3,
+	-- Puntos suspensivos ("..." o "…"): cada punto suena, con esta pausa (s) y este tono.
+	DotDelay = 0.3,
+	DotPitch = 0.85,
 	-- Cuánto crece el avatar en cada sonido ("habla"); 1 = sin movimiento.
 	TalkScale = 1.07,
 }

@@ -1,6 +1,8 @@
--- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > MobileHUDLayout (ModuleScript)
+-- Ubicación en Studio: StarterPlayer > StarterPlayerScripts > Utils > MobileScaler (ModuleScript)
 -- En táctil reacomoda LeftButtons y Currency del HUD según los atributos de LeftButtons.MobileLayout.
 local Input = game:GetService("UserInputService")
+local RS = game:GetService("ReplicatedStorage")
+local DebugConfig = require(RS:WaitForChild("DebugConfig"))
 local Layout = {}
 function Layout.Attach(gui, touchOverride)
 	local holder, panel = gui.LeftButtons, gui.Currency
@@ -32,6 +34,27 @@ function Layout.Attach(gui, touchOverride)
 		end
 	end
 	local applied = false
+	-- Solo cuando cambia el modo o la escala: fit corre en cada cambio de tamaño.
+	local lastLog = ""
+	local function log(mobile: boolean, scale: number)
+		local line = ("[MobileScaler] Running — mobile: %s | scale: %.2f"):format(tostring(mobile), scale)
+		if line ~= lastLog then
+			lastLog = line
+			DebugConfig.print(line)
+		end
+	end
+	DebugConfig.print(
+		("[MobileScaler] Detection -- PreferredInput=%s TouchEnabled=%s KeyboardEnabled=%s MouseEnabled=%s -> isTouchDevice=%s"):format(
+			-- pcall: PreferredInput es una propiedad nueva y no existe en todas las versiones.
+			tostring(select(2, pcall(function()
+				return Input.PreferredInput
+			end))),
+			tostring(Input.TouchEnabled),
+			tostring(Input.KeyboardEnabled),
+			tostring(Input.MouseEnabled),
+			tostring(if touchOverride ~= nil then touchOverride else Input.TouchEnabled)
+		)
+	)
 	local function fit()
 		local mobile = if touchOverride ~= nil then touchOverride else Input.TouchEnabled
 		if not mobile then
@@ -55,10 +78,11 @@ function Layout.Attach(gui, touchOverride)
 				end
 				applied = false
 			end
-			gui:SetAttribute("MobileHUDLayout", false)
+			gui:SetAttribute("MobileScaler", false)
+			log(false, 1)
 			return
 		end
-		gui:SetAttribute("MobileHUDLayout", true)
+		gui:SetAttribute("MobileScaler", true)
 		applied = true
 		for label in labels do
 			label.TextSize = 22
@@ -70,6 +94,7 @@ function Layout.Attach(gui, touchOverride)
 		local scale = math.min(size.Y / (config:GetAttribute("ReferenceHeight") or 656), size.X * 0.38 / 228, 1.25)
 		holderScale.Scale = scale
 		panelScale.Scale = scale
+		log(true, scale)
 		holder.AnchorPoint = Vector2.zero
 		holder.Size = config:GetAttribute("Size")
 		holder.Position = config:GetAttribute("Position")

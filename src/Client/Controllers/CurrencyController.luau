@@ -33,7 +33,7 @@ function Controller.Init()
 	local panel = gui:WaitForChild("Currency")
 	local holder = gui.LeftButtons
 	local function position()
-		if UserInputService.TouchEnabled or gui:GetAttribute("MobileHUDLayout") then
+		if UserInputService.TouchEnabled or gui:GetAttribute("MobileScaler") then
 			return
 		end
 		panel.Position = UDim2.new(

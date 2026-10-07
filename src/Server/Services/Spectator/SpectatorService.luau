@@ -9,6 +9,9 @@ local Settings = require(script.Parent.ReportConfig)
 local Policy = require(script.Parent.ReportPolicy)
 local ReportEmbed = require(script.Parent.ReportEmbed)
 local Remotes = require(RS:WaitForChild("Remotes"))
+local DebugConfig = require(RS:WaitForChild("DebugConfig"))
+local DataService = require(script.Parent.Parent:WaitForChild("Data"):WaitForChild("DataService"))
+local LogService = require(script.Parent.Parent:WaitForChild("Logs"):WaitForChild("LogService"))
 local Service = {}
 -- Como mucho un cambio de objetivo cada tanto por jugador; el último pedido nunca se descarta.
 local TARGET_INTERVAL = 0.1
@@ -57,6 +60,51 @@ local function canObserve(observer, target)
 	end
 	return observer ~= target and Service.IsEligible(target)
 end
+-- Suma el reporte al perfil del reportado (siempre está en este servidor: hay que espectarlo).
+-- Devuelve el conteo y si toca avisar al webhook de alertas.
+local function recordReport(reporter, target)
+	local profile = DataService.GetProfile(target)
+	if not profile then
+		return nil, false
+	end
+	local data = profile.Data.Reports
+	data.Total += 1
+	local key = tostring(reporter.UserId)
+	if not data.Reporters[key] then
+		data.Unique += 1
+		local stored = 0
+		for _ in data.Reporters do
+			stored += 1
+		end
+		if stored < Settings.MaxStoredReporters then
+			data.Reporters[key] = true
+		end
+	end
+	local alert = Settings.Alert
+	local due = data.Unique >= alert.Threshold and data.Unique >= data.AlertedAt + alert.Every
+	if due then
+		data.AlertedAt = data.Unique
+	end
+	return { Total = data.Total, Unique = data.Unique }, due
+end
+local function post(url, payload)
+	local ok, response = pcall(function()
+		return Http:RequestAsync({
+			Url = url:AddSuffix("?wait=true"),
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json" },
+			Body = Http:JSONEncode(payload),
+		})
+	end)
+	return ok and response.Success
+end
+-- Webhook aparte y opcional: sin su secreto no se manda nada.
+local function sendAlert(target, reason, count)
+	local found, webhook = pcall(Http.GetSecret, Http, Settings.Alert.WebhookSecret)
+	if found then
+		post(webhook, ReportEmbed.alert(target, reason, count))
+	end
+end
 local function submit(player, targetId, reason, details)
 	local clean, err = Policy.Validate(reason, details)
 	if not clean then
@@ -92,20 +140,19 @@ local function submit(player, targetId, reason, details)
 	if not Http.HttpEnabled then
 		return finish(false, "NotConfigured")
 	end
+	local count, alertDue = recordReport(player, target)
 	-- Nombres e IDs salen del servidor; el texto del jugador es contenido sin verificar.
-	local payload = ReportEmbed.build(player, target, reason, clean, debugReport)
-	local ok, response = pcall(function()
-		return Http:RequestAsync({
-			Url = webhook:AddSuffix("?wait=true"),
-			Method = "POST",
-			Headers = { ["Content-Type"] = "application/json" },
-			Body = Http:JSONEncode(payload),
-		})
-	end)
+	local payload = ReportEmbed.build(player, target, reason, clean, debugReport, count)
 	-- No loguear URL/token ni el texto; no reintentar un POST que quizá ya llegó.
-	if not ok or not response.Success then
+	if not post(webhook, payload) then
 		return finish(false, "Failed")
 	end
+	if alertDue then
+		task.spawn(sendAlert, target, reason, count)
+	end
+	local title = ReportEmbed.reasonTitle(reason)
+	LogService.Add(target.UserId, "Report", ("Reported by @%s · %s"):format(player.Name, title))
+	LogService.Add(player.UserId, "Report", ("Reported @%s · %s"):format(target.Name, title))
 	return finish(true, "Sent")
 end
 local function applyTarget(player, id)
@@ -151,6 +198,15 @@ local function requestTarget(player, id)
 	end)
 end
 function Service.Init()
+	local reportHook = pcall(Http.GetSecret, Http, Settings.WebhookSecret)
+	local alertHook = pcall(Http.GetSecret, Http, Settings.Alert.WebhookSecret)
+	DebugConfig.print(
+		("[SpectatorService] Report webhook: %s | Alert webhook: %s | HTTP: %s"):format(
+			if reportHook then "OK" else "missing",
+			if alertHook then "OK" else "missing",
+			if Http.HttpEnabled then "on" else "off"
+		)
+	)
 	if RS:GetAttribute(Config.RoundAttribute) == nil then
 		Service.SetRoundActive(false)
 	end

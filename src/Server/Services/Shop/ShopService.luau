@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
 local ShopConfig = require(ReplicatedStorage:WaitForChild("ShopConfig"))
 local DebugConfig = require(ReplicatedStorage:WaitForChild("DebugConfig"))
+local LogService = require(script.Parent.Parent:WaitForChild("Logs"):WaitForChild("LogService"))
 
 local ShopService = {}
 
@@ -128,10 +129,25 @@ local function processReceipt(receipt: { [string]: any }): Enum.ProductPurchaseD
 	end
 
 	granted[receipt.PurchaseId] = true
+	LogService.Add(
+		player.UserId,
+		"Purchase",
+		("Bought %s · %d R$ · receipt %s"):format(item.Title, receipt.CurrencySpent or 0, tostring(receipt.PurchaseId)),
+		item.Icon
+	)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
 function ShopService.Init()
+	local products, passes = 0, 0
+	for _ in productToItem do
+		products += 1
+	end
+	for _ in passToItem do
+		passes += 1
+	end
+	-- ProductId 0 = demo: no entra en estas cuentas ni se puede comprar.
+	DebugConfig.print(("[ShopService] Wired %d products, %d game passes"):format(products, passes))
 	-- Único por juego: ningún otro script puede asignar ProcessReceipt.
 	MarketplaceService.ProcessReceipt = processReceipt
 
@@ -139,6 +155,13 @@ function ShopService.Init()
 		local itemId = passToItem[passId]
 		if purchased and itemId then
 			markPass(player, itemId)
+			local item = ShopConfig.get(itemId)
+			LogService.Add(
+				player.UserId,
+				"Purchase",
+				("Bought pass %s · %d R$"):format(item.Title, item.Price or 0),
+				item.Icon
+			)
 			Remotes.fireTo(player, "shopOwned", itemId)
 		end
 	end)

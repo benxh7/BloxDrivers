@@ -73,7 +73,7 @@ StarterPlayerScripts         (src/Client)
     ├── UITemplates          acceso a ReplicatedStorage.UITemplates
     ├── Signal               señales entre módulos
     ├── Notifications        toasts (plantilla UITemplates.ToastMessage)
-    ├── MobileHUDLayout      reacomodo del HUD en táctil
+    ├── MobileScaler         reacomodo del HUD en táctil
     ├── ShopPurchaseEffect   animación previa al prompt de compra
     ├── WindowLayout         tamaño de ventana y de su Header según la pantalla
     └── VoterAvatars         fotitos de votantes (compartido por las vistas de votación)

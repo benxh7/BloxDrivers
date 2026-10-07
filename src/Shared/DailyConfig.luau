@@ -11,15 +11,17 @@ Config.Rewards = {
 	{ Title = "$350 Cash", Icon = "rbxassetid://83574433548351" },
 	{ Title = "+1 Revive", Icon = "rbxassetid://115365429901908" },
 	{ Title = "1 Basic Sniper Case", Icon = "rbxassetid://96479466263272" },
-	{ Title = "$500 Cash + 1 Basic Sniper Case", Icon = "rbxassetid://96479466263272", Special = true },
+	{ Title = "$500 Cash + 1 Basic Sniper Case", Icon = "rbxassetid://96479466263272", Special = true, SpinDecal = true },
 	{ Title = "$400 Cash", Icon = "rbxassetid://85864455116402" },
 	{ Title = "1 Basic Effect Case", Icon = "rbxassetid://79856150434822" },
 	{ Title = "+1 Revive", Icon = "rbxassetid://115365429901908" },
 	{ Title = "1 Basic Sniper Case", Icon = "rbxassetid://96479466263272" },
 	{ Title = "$750 Cash", Icon = "rbxassetid://101510053154843" },
 	{ Title = "2 Basic Sniper Cases", Icon = "rbxassetid://96479466263272", IconCount = 2 },
-	{ Title = "1 Limited Case + $1,000 Cash", Icon = "rbxassetid://130147541805143", Special = true },
+	{ Title = "1 Limited Case + $1,000 Cash", Icon = "rbxassetid://130147541805143", Special = true, SpinDecal = true },
 }
+-- Figura que gira detrás del ícono en los días con `SpinDecal = true` (la misma de la tienda).
+Config.SpinSecondsPerTurn = 12
 Config.States = {
 	Ready = { Text = "READY", Color = Color3.fromRGB(255, 237, 70) },
 	Claimed = { Text = "CLAIMED", Color = Color3.fromRGB(105, 255, 144) },

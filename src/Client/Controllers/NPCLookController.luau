@@ -47,6 +47,7 @@ local function onNPCAdded(npc: Model)
 
 		-- El giro va sobre la pose original: sin nadie cerca mira a donde quedó en Studio.
 		watchers[npc] = { joint = joint, restC0 = joint.C0, root = root, yaw = 0 }
+		DebugConfig.print(("[NPCLook] Watching %s"):format(npc.Name))
 	end)
 end
 

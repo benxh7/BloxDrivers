@@ -12,7 +12,7 @@ DebugConfig.CHEATS_ENABLED = RunService:IsStudio()
 
 -- Subir a mano en cada release.
 DebugConfig.VERSION = "0.1.0"
-DebugConfig.AUTHOR = ""
+DebugConfig.AUTHOR = "iHazeHD"
 
 function DebugConfig.print(...: any)
 	if DebugConfig.ENABLED then

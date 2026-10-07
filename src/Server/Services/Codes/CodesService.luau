@@ -7,6 +7,8 @@ local DSS = game:GetService("DataStoreService")
 local Http = game:GetService("HttpService")
 local Remotes = require(RS:WaitForChild("Remotes"))
 local Config = require(script.Parent.CodesConfig)
+local DebugConfig = require(RS:WaitForChild("DebugConfig"))
+local LogService = require(script.Parent.Parent:WaitForChild("Logs"):WaitForChild("LogService"))
 local Service = {}
 local busy, last = {}, {}
 local database = DSS:GetDataStore(Config.DataStoreName)
@@ -88,6 +90,7 @@ function Service.Redeem(player, raw)
 		return result(false, reason)
 	end
 	if entry.Demo then
+		LogService.Add(player.UserId, "Code", ("Redeemed demo code %s"):format(code))
 		return result(true, entry.Message or "Test code redeemed!")
 	end
 	busy[player] = true
@@ -112,6 +115,7 @@ function Service.Redeem(player, raw)
 	if data.Redeemed[code].Token ~= token then
 		return result(false, "Code already redeemed.")
 	end
+	LogService.Add(player.UserId, "Code", ("Redeemed code %s"):format(code))
 	return result(true, entry.Message or "Rewards claimed!")
 end
 -- Para que otros servicios lean el saldo cuando se conecte la economía.
@@ -123,6 +127,11 @@ function Service.GetWallet(userId)
 	return data and data.Wallet or { Cash = 0, Gems = 0, Revive = 0, Items = {} }
 end
 function Service.Init()
+	local count = 0
+	for _ in Config.Codes do
+		count += 1
+	end
+	DebugConfig.print(("[CodesService] %d codes configured"):format(count))
 	Remotes.onServerInvoke("RedeemCode", Service.Redeem)
 	Players.PlayerRemoving:Connect(function(p)
 		busy[p] = nil

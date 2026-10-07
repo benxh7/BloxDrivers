@@ -255,6 +255,7 @@ local function onDebugVote(player: Player)
 end
 
 function MapVoteService.Init()
+	DebugConfig.print(("[MapVoteService] %d maps in ServerStorage.%s"):format(#scanAllMaps(), MAPS_FOLDER_NAME))
 	Remotes.onServerEvent("CastMapVote", onCastVote, CAST_VOTE_COOLDOWN)
 	Remotes.onServerEvent("RequestMapVoteState", onRequestState, REQUEST_STATE_COOLDOWN)
 	Remotes.onServerEvent("DebugMapVote", onDebugVote, DEBUG_VOTE_COOLDOWN)

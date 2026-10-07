@@ -28,6 +28,11 @@ local grantIndex = 1
 local busy: { [string]: boolean } = {}
 local profileUserId: number? = nil
 local searched = nil
+-- Logs del jugador buscado (todas las categorías) y la pestaña elegida.
+local playerLogs = nil
+local logsStatus = "Search a player to see their logs"
+local logCategory = "All"
+local logPeriod = 1
 local setBlur
 
 local function myLevel(): number
@@ -66,11 +71,23 @@ local function bindConfirm(button: GuiButton, callback: () -> ())
 	end)
 end
 
+local REQUEST_SPACING = 0.35
+local lastRequestAt = 0
+
 local function request(action: string, payload: { [string]: any }?, quiet: boolean?): any
 	if busy[action] then
 		return nil
 	end
 	busy[action] = true
+	-- AdminRequest descarta pedidos a menos de REQUEST_SPACING del anterior (cooldown del
+	-- servidor): búsqueda + logs salen juntos, así que se esperan en vez de perderse.
+	local wait = lastRequestAt + REQUEST_SPACING - os.clock()
+	if wait > 0 then
+		lastRequestAt += REQUEST_SPACING
+		task.wait(wait)
+	else
+		lastRequestAt = os.clock()
+	end
 	local ok, result = pcall(function()
 		return Remotes.func("AdminRequest"):InvokeServer(action, payload or {})
 	end)
@@ -207,8 +224,9 @@ local function showProfile(userId: number)
 	if data.AccountAge then
 		table.insert(lines, ('<font color="#FFAA28">Account age : %dd</font>'):format(data.AccountAge))
 	end
-	profile.Stats.Text = table.concat(lines, "\n")
-	profile.RevokeButton.Visible = canRevoke(data)
+	profile.InfoCard.Stats.Text = table.concat(lines, "\n")
+	-- Actions centra los botones: sin REVOKE, BACK queda solo en el medio.
+	profile.InfoCard.Actions.RevokeSlot.Visible = canRevoke(data)
 	adminsPage.List.Visible = false
 	adminsPage.EmptyLabel.Visible = false
 	profile.Visible = true
@@ -255,8 +273,100 @@ local STATUS = {
 	Offline = { "Offline", Color3.fromRGB(180, 188, 210) },
 }
 
+-- Entradas de la pestaña elegida ("All" = todas las categorías), dentro del período y
+-- ordenadas de la más nueva a la más vieja. Cada una lleva el ícono de su categoría.
+local function visibleLogs(): { { At: number, Text: string, Icon: string } }
+	local period = Config.Logs.Periods[logPeriod]
+	local since = 0
+	if period.Days == 0 then
+		local now = os.date("*t")
+		since = os.time({ year = now.year, month = now.month, day = now.day, hour = 0 })
+	elseif period.Days then
+		since = os.time() - period.Days * 86400
+	end
+	local list = {}
+	for _, category in Config.Logs.Categories do
+		if logCategory == "All" or logCategory == category.Id then
+			for _, entry in playerLogs and playerLogs[category.Id] or {} do
+				if entry.At >= since then
+					table.insert(list, { At = entry.At, Text = entry.Text, Icon = entry.Icon or category.Icon })
+				end
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.At > b.At
+	end)
+	return list
+end
+
+local function renderLogs()
+	local card = playerPage.LogsCard
+	for _, category in Config.Logs.Categories do
+		paint(card[category.Button], if category.Id == logCategory then category.Palette else "Grey")
+	end
+	local all = Config.Logs.All
+	paint(card[all.Button], if logCategory == "All" then all.Palette else "Grey")
+	card.PeriodButton.Label.Text = Config.Logs.Periods[logPeriod].Label
+	clearList(card.List)
+	local entries = visibleLogs()
+	local order, lastDay = 0, nil
+	for _, entry in entries do
+		-- Un separador cada vez que cambia el día, para leer el detalle fecha por fecha.
+		local day = os.date("%A %d/%m/%Y", entry.At)
+		if day ~= lastDay then
+			lastDay = day
+			local header = UITemplates.clone("AdminLogDay")
+			if header then
+				order += 1
+				header.LayoutOrder = order
+				header.Text = day
+				header.Visible = true
+				header.Parent = card.List
+			end
+		end
+		local row = UITemplates.clone("AdminLogRow")
+		if not row then
+			return
+		end
+		order += 1
+		row.LayoutOrder = order
+		row.Details.DateLabel.Text = os.date("%H:%M", entry.At)
+		row.Details.TextLabel.Text = entry.Text
+		row.IconBox.Icon.Image = entry.Icon
+		row.Visible = true
+		row.Parent = card.List
+	end
+	card.EmptyLabel.Text = if playerLogs then "No logs in this period" else logsStatus
+	card.EmptyLabel.Visible = #entries == 0
+	card.List.CanvasPosition = Vector2.zero
+end
+
+local function loadLogs(data)
+	local card = playerPage.LogsCard
+	playerLogs = nil
+	if not data then
+		card.TargetLabel.Text = "Search a player to see their logs"
+		logsStatus = "Search a player to see their logs"
+		renderLogs()
+		return
+	end
+	card.TargetLabel.Text = ("Logs of %s (@%s)"):format(data.DisplayName, data.Name)
+	logsStatus = "Loading..."
+	renderLogs()
+	local result = request("ViewLogs", { UserId = data.UserId }, true)
+	-- Otro jugador buscado mientras cargaba: se descarta esta respuesta.
+	if searched ~= data then
+		return
+	end
+	playerLogs = if result and result.Ok then result.Data else nil
+	logsStatus = "Could not load logs"
+	renderLogs()
+end
+
 local function showSearchResult(data)
 	searched = data
+	task.spawn(loadLogs, data)
 	local result = playerPage.CommandsCard.Result
 	result.EmptyLabel.Visible = data == nil
 	for _, name in { "AvatarBox", "NameLabel", "UserLabel", "StatusLabel" } do
@@ -386,6 +496,22 @@ local function paintGrantRank()
 end
 
 local function bindPlayerPage()
+	local logsCard = playerPage.LogsCard
+	for _, category in Config.Logs.Categories do
+		bind(logsCard[category.Button], function()
+			logCategory = category.Id
+			renderLogs()
+		end)
+	end
+	bind(logsCard[Config.Logs.All.Button], function()
+		logCategory = "All"
+		renderLogs()
+	end)
+	paint(logsCard.PeriodButton, "Orange")
+	bind(logsCard.PeriodButton, function()
+		logPeriod = logPeriod % #Config.Logs.Periods + 1
+		renderLogs()
+	end)
 	local card = playerPage.CommandsCard
 	bindLimit(card.ReasonInput, Config.Limits.Reason)
 	bind(card.SearchButton, search)
@@ -405,7 +531,12 @@ local function bindPlayerPage()
 		for key, value in extra or {} do
 			payload[key] = value
 		end
-		return request(action, payload)
+		local target = searched
+		local result = request(action, payload)
+		if result and result.Ok then
+			task.spawn(loadLogs, target)
+		end
+		return result
 	end
 	bind(card.KickButton, function()
 		act("Kick")
@@ -445,12 +576,12 @@ end
 
 local function bindAdminsPage()
 	local profile = adminsPage.Profile
-	bind(profile.BackButton, function()
+	bind(profile.InfoCard.Actions.BackSlot.BackButton, function()
 		profile.Visible = false
 		adminsPage.List.Visible = true
 		refreshAdmins()
 	end)
-	bindConfirm(profile.RevokeButton, function()
+	bindConfirm(profile.InfoCard.Actions.RevokeSlot.RevokeButton, function()
 		if profileUserId then
 			revoke(profileUserId)
 		end
@@ -524,7 +655,7 @@ function Controller.Init()
 	end)
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitWindow)
 	tabs:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitWindow)
-	for _, page in { serverPage, playerPage, adminsPage.List } do
+	for _, page in { serverPage, playerPage, adminsPage.List, playerPage.LogsCard.List } do
 		bindCanvas(page)
 	end
 	task.defer(fitWindow)

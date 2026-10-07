@@ -12,18 +12,19 @@ local NPCAnimationService = {}
 local tracks: { [Model]: AnimationTrack } = {}
 
 local function logState(model: Model, track: AnimationTrack)
-	DebugConfig.print(("[NPCAnimationService] Playing %s isPlaying: %s"):format(model.Name, tostring(track.IsPlaying)))
+	DebugConfig.print(("[NPCAnimations] Playing %s isPlaying: %s"):format(model.Name, tostring(track.IsPlaying)))
 end
 
 local function setupNPC(model: Model)
 	local settings = NPCConfig.get(model)
 	if settings.IdleAnimation == "" then
+		DebugConfig.print(("[NPCAnimations] %s has no idle animation (static)"):format(model.Name))
 		return
 	end
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
-		DebugConfig.warn(("[NPCAnimationService] %s no tiene Humanoid"):format(model.Name))
+		DebugConfig.warn(("[NPCAnimations] %s no tiene Humanoid"):format(model.Name))
 		return
 	end
 
@@ -42,7 +43,7 @@ local function setupNPC(model: Model)
 		return (animator :: Animator):LoadAnimation(animation)
 	end)
 	if not ok or not track then
-		DebugConfig.warn(("[NPCAnimationService] %s: no cargó %s"):format(model.Name, settings.IdleAnimation))
+		DebugConfig.warn(("[NPCAnimations] %s: no cargó %s"):format(model.Name, settings.IdleAnimation))
 		return
 	end
 

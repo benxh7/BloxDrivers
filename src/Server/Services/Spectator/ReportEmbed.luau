@@ -16,6 +16,10 @@ for _, entry in Config.Reasons do
 	reasonTitles[entry.Id] = entry.Title
 end
 
+function ReportEmbed.reasonTitle(reason: string): string
+	return reasonTitles[reason] or reason
+end
+
 -- `_` es itálica en Discord y los DisplayName admiten más símbolos: se escapan siempre.
 local function escape(text: string): string
 	return (text:gsub("[\\`*_~|>%[%]]", "\\%0"))
@@ -56,7 +60,29 @@ end
 
 -- `details` ya viene validado por ReportPolicy; va en bloque de código para que no se
 -- interprete como markdown ni links.
-function ReportEmbed.build(reporter: Player, target: Player, reason: string, details: string, debugReport: boolean)
+export type ReportCount = { Total: number, Unique: number }
+
+local function countLine(count: ReportCount?): string?
+	if not count then
+		return nil
+	end
+	return ("**Reports on this player:** %d from %d different players"):format(count.Total, count.Unique)
+end
+
+local function footer()
+	return {
+		text = ("Place %d · Job %s"):format(game.PlaceId, if game.JobId ~= "" then game.JobId else "Studio"),
+	}
+end
+
+function ReportEmbed.build(
+	reporter: Player,
+	target: Player,
+	reason: string,
+	details: string,
+	debugReport: boolean,
+	count: ReportCount?
+)
 	local header = if debugReport then Settings.Embed.DebugHeader else Settings.Embed.Header
 	local safeDetails = details:gsub("`", "ˋ")
 	local description = table.concat({
@@ -66,6 +92,7 @@ function ReportEmbed.build(reporter: Player, target: Player, reason: string, det
 		"",
 		("**Reported:** %s"):format(profileLink(target)),
 		("**Reason:** %s %s"):format(Settings.Embed.ReasonEmoji, reasonTitles[reason] or reason),
+		countLine(count) or "",
 		"",
 		"**Details:**",
 		("```%s```"):format(safeDetails),
@@ -76,9 +103,7 @@ function ReportEmbed.build(reporter: Player, target: Player, reason: string, det
 	local embed: { [string]: any } = {
 		color = Settings.Embed.Color,
 		description = description,
-		footer = {
-			text = ("Place %d · Job %s"):format(game.PlaceId, if game.JobId ~= "" then game.JobId else "Studio"),
-		},
+		footer = footer(),
 		timestamp = DateTime.now():ToIsoDate(),
 	}
 	local avatar = ReportEmbed.avatarUrl(target.UserId)
@@ -87,6 +112,30 @@ function ReportEmbed.build(reporter: Player, target: Player, reason: string, det
 	end
 	if Settings.Embed.BannerUrl ~= "" then
 		embed.image = { url = Settings.Embed.BannerUrl }
+	end
+	return { allowed_mentions = { parse = {} }, embeds = { embed } }
+end
+
+-- Aviso al webhook de alertas: el jugador pasó el umbral de reporteros distintos.
+function ReportEmbed.alert(target: Player, reason: string, count: ReportCount)
+	local alert = Settings.Alert
+	local embed: { [string]: any } = {
+		color = alert.Color,
+		description = table.concat({
+			("`%s`"):format(alert.Header),
+			"",
+			("**Player:** %s"):format(profileLink(target)),
+			countLine(count),
+			("**Latest reason:** %s %s"):format(Settings.Embed.ReasonEmoji, reasonTitles[reason] or reason),
+			"",
+			"Still in this server: join the Job below to check.",
+		}, "\n"),
+		footer = footer(),
+		timestamp = DateTime.now():ToIsoDate(),
+	}
+	local avatar = ReportEmbed.avatarUrl(target.UserId)
+	if avatar then
+		embed.thumbnail = { url = avatar }
 	end
 	return { allowed_mentions = { parse = {} }, embeds = { embed } }
 end

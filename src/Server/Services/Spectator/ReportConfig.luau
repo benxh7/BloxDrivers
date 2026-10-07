@@ -7,6 +7,17 @@ return {
 	WebhookSecret = "DiscordReportWebhook",
 	CooldownSeconds = 60, -- por reportero + objetivo, en este servidor
 	AttemptInterval = 2,
+	-- Aviso aparte cuando un jugador junta reportes de varias personas (posible hacker).
+	-- Otro webhook, en el secreto AlertWebhookSecret; sin ese secreto el aviso no se manda.
+	Alert = {
+		WebhookSecret = "DiscordAlertWebhook",
+		Threshold = 5, -- reporteros DISTINTOS para el primer aviso
+		Every = 5, -- y otro aviso cada tantos reporteros nuevos (10, 15, ...)
+		Color = 0xE53935,
+		Header = "Possible exploiter: many reports",
+	},
+	-- Tope de reporteros guardados por jugador; pasado el tope se cuentan sin deduplicar.
+	MaxStoredReporters = 300,
 	StudioDryRun = false, -- sin secreto: en Studio solo valida, nunca dice "enviado"
 	-- Avatar busto del reportado (%d = UserId). roproxy porque el servidor no puede llamar a roblox.com.
 	ThumbnailApi = "https://thumbnails.roproxy.com/v1/users/avatar-bust?userIds=%d&size=420x420&format=Png&isCircular=false",

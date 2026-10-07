@@ -146,7 +146,8 @@ ShopConfig.Style = {
 	Open = { FromScale = 0.1, Duration = 0.35 },
 }
 
-ShopConfig.SpinDecal = { Image = "rbxassetid://122287190167781", SecondsPerTurn = 12, Transparency = 0.15 }
+-- Scale: tamaño de los rayos respecto del ícono de la card (más de 1 = asoman alrededor).
+ShopConfig.SpinDecal = { Image = "rbxassetid://122287190167781", SecondsPerTurn = 12, Transparency = 0.15, Scale = 1.5 }
 
 -- Campana + swoosh: exclusivos de la tienda, suenan juntos al abrirla. El resto de las
 -- ventanas solo tienen el clic del botón.
@@ -260,6 +261,7 @@ ShopConfig.Items = {
 		Glow = Color3.fromRGB(60, 230, 90),
 		Pattern = false,
 		Gem = true,
+		SpinDecal = true,
 	},
 	VIP = {
 		Kind = "GamePass",
@@ -403,6 +405,12 @@ ShopConfig.Items = {
 		ART.CashSafe
 	),
 } :: { [string]: Item }
+
+-- SpinDecal en el pack más grande de cada fila: resalta lo que más conviene comprar. Pocos a
+-- propósito: si gira todo, ninguno destaca.
+for _, id in { "Revive10", "Gems10K", "Cash500K" } do
+	ShopConfig.Items[id].SpinDecal = true
+end
 
 -- Filas de arriba hacia abajo.
 ShopConfig.Rows = {
