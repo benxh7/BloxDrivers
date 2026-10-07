@@ -52,6 +52,9 @@ local function voiceFor(userId: number): Sound?
 	if choice and not presets[choice] then
 		preset.Sound = choice
 	end
+	if preset.Sound == "" then
+		preset = presets.Default
+	end
 	if voices[preset.Sound] == nil then
 		local sound = UIEffects.makeSound("AdminVoice", preset.Sound, preset.Volume)
 		if sound then

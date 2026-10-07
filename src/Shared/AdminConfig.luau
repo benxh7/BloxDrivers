@@ -72,11 +72,13 @@ Config.Icons = {
 	Panel = "rbxassetid://84416250652005",
 }
 
--- Assets de UBG, los mismos que usa el resto del proyecto.
+-- Announcement y PollEnd son assets de UBG. Success/Error suenan con cada respuesta del panel:
+-- no usar el de cobrar recompensas (Daily/Playtime), que se confunde con un premio.
 Config.Sounds = {
 	Announcement = "rbxassetid://127438224839678",
 	PollEnd = "rbxassetid://124793974135748",
-	Success = "rbxassetid://109742263473623",
+	Success = "rbxassetid://85240253037283",
+	Error = "rbxassetid://124387798635805",
 }
 
 -- "Voz" del anuncio, estilo Undertale: suena mientras se escribe cada letra.
@@ -85,10 +87,15 @@ Config.Voice = {
 	Presets = {
 		Default = { Sound = "rbxassetid://110969462696032", Volume = 0.5, Pitch = 1 },
 		Female = { Sound = "rbxassetid://2633343843", Volume = 0.5, Pitch = 1 },
+		-- Beep con la voz de benxh. Sound vacío = usa Default hasta que se cargue el ID.
+		benxh = { Sound = "rbxassetid://85179944862997", Volume = 1.0, Pitch = 1 },
+		esme = { Sound = "rbxassetid://76405550074157", Volume = 1.0, Pitch = 1.5 },
 	},
 	-- Voz de cada miembro del staff: [UserId] = "Female" (un preset) o "rbxassetid://..." (propia).
 	-- Sin entrada = Default.
 	ByUserId = {
+		[3815857302] = "benxh", -- iHazeHD > Voice
+		[1308587919] = "esme", -- 666_Jh0rlya > Voice
 		-- [123456789] = "Female",                -- usa la plantilla
 		-- [987654321] = "rbxassetid://SU_SONIDO", -- sonido propio	
 	} :: { [number]: string },

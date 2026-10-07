@@ -82,7 +82,7 @@ local function request(action: string, payload: { [string]: any }?, quiet: boole
 	if result.Message ~= "" and not (quiet and result.Ok) then
 		Notifications.Show(result.Message, {
 			Theme = if result.Ok then "Success" else "Error",
-			SoundId = if result.Ok then Config.Sounds.Success else nil,
+			SoundId = if result.Ok then Config.Sounds.Success else Config.Sounds.Error,
 		})
 	end
 	return result
