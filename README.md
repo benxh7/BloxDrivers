@@ -41,6 +41,8 @@ ReplicatedStorage            (src/Shared)
 ServerScriptService          (src/Server)
 ├── Main                     Script: crea Remotes y arranca todos los *Service
 └── Services
+    ├── Admin/AdminService (+ AdminRanks, AdminBroadcast)
+    ├── Data/DataService     dueño de EasyProfileStore (perfil de cada jugador)
     ├── Codes/CodesService (+ CodesConfig, privado del servidor)
     ├── Loading/AssetManifestService, LoadingService
     ├── MapVote/MapVoteService
@@ -49,7 +51,7 @@ ServerScriptService          (src/Server)
     └── Spectator/SpectatorService (+ ReportConfig, ReportPolicy)
 
 ServerStorage                (src/ServerStorage)
-├── EasyProfileStore         wrapper de ProfileStore (persistencia)
+├── EasyProfileStore         wrapper de ProfileStore (persistencia, vía DataService)
 └── Maps                     catálogo de mapas (Studio)
 
 StarterPlayerScripts         (src/Client)
@@ -192,7 +194,5 @@ No hace falta tocar `ClientMain` ni `Main`: los módulos nuevos se cargan solos.
 - **Tienda:** registrar los grants (`ShopService.RegisterGrant("Cash", fn)`) desde el
   `DataService`, guardar los `PurchaseId` en el perfil (idempotencia real), cargar los
   `ProductId` en `ShopConfig`, flujo de regalos y ventana `Pass` para el VIEW.
-- **Persistencia:** conectar `EasyProfileStore.New(nombre, template)` desde un
-  `DataService`.
 - Los IDs de sonido son de la cuenta de UBG. Si alguno da error de permisos, hay que
   resubirlo.

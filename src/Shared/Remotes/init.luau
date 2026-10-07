@@ -23,6 +23,9 @@ local EVENTS = {
 
 	-- Espectador.
 	"SetSpectatorTarget",
+
+	-- Admin Panel: voto de un jugador en el poll activo.
+	"VotePoll",
 }
 
 local FUNCTIONS: { string } = {
@@ -34,6 +37,10 @@ local FUNCTIONS: { string } = {
 
 	-- Espectador.
 	"SubmitPlayerReport",
+
+	-- Admin Panel.
+	"AdminRequest",
+	"GetActivePoll",
 }
 
 local UPDATE_UI = "UpdateUI"

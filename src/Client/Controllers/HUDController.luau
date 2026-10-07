@@ -20,6 +20,8 @@ local BUTTONS: { [string]: string } = {
 	PlaytimeButton = "PlaytimeRewards",
 	SettingsButton = "Settings",
 	InventoryButton = "Inventory",
+	-- Solo visible con rango: lo muestra AdminPanelController.
+	AdminButton = "AdminPanel",
 }
 
 -- Hover: cuánto crece el botón y cuántos grados gira su `Icon`.

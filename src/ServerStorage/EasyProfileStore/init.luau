@@ -80,7 +80,7 @@ function EasyProfileStore.onPlayerJoined(callback : (Player, any) -> ())
 		return EasyProfileStore._FireError("Data not loaded")
 	end
 	
-	Players.PlayerAdded:Connect(function(player)
+	local function load(player)
 		local profile = self.DatasLoaded:StartSessionAsync(
 			`Player_{player.UserId}`,
 			{
@@ -116,7 +116,13 @@ function EasyProfileStore.onPlayerJoined(callback : (Player, any) -> ())
 		end)
 
 		callback(player, profile)
-	end)
+	end
+
+	Players.PlayerAdded:Connect(load)
+	-- En Studio el jugador suele entrar antes de que corra el servidor: PlayerAdded no lo ve.
+	for _, player in Players:GetPlayers() do
+		task.spawn(load, player)
+	end
 end
 
 function EasyProfileStore.GetProfile(Player) : {Player}
