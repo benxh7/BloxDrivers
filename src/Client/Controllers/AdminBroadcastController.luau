@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local ContentProvider = game:GetService("ContentProvider")
 local UIManager = require(script.Parent:WaitForChild("UIManager"))
 local Utils = script.Parent.Parent:WaitForChild("Utils")
@@ -12,12 +13,14 @@ local UIEffects = require(Utils:WaitForChild("UIEffects"))
 local UITemplates = require(Utils:WaitForChild("UITemplates"))
 local Notifications = require(Utils:WaitForChild("Notifications"))
 local GradientButton = require(Utils:WaitForChild("GradientButton"))
+local AnimatedDialogueText = require(Utils:WaitForChild("AnimatedDialogueText"))
 local Remotes = require(RS:WaitForChild("Remotes"))
 local Config = require(RS:WaitForChild("AdminConfig"))
 
 local Controller = {}
 
 local GUI_NAME = "AdminBroadcastGui"
+local GLYPH_TEMPLATE = "AnnouncementGlyph"
 -- Color de cada opción del poll en orden; la votada se pinta con VOTED_PALETTE.
 local OPTION_PALETTES = { "Green", "Red", "Blue", "Purple" }
 local VOTED_PALETTE = "Orange"
@@ -25,10 +28,9 @@ local VOTED_PALETTE = "Orange"
 local POP_FROM = 0.6
 -- Separación (px) entre el anuncio y el poll cuando se ven los dos.
 local STACK_GAP = 8
--- Cuánto tarda el avatar en volver a su tamaño después de cada "sílaba".
-local TALK_DURATION = 0.1
 
-local gui, announcement, pollFrame, talkScale
+local gui, announcement, pollFrame
+local messageArea, messageText
 local queue = {}
 local showingAnnouncement = false
 local poll = nil
@@ -72,45 +74,22 @@ local function speak(voice: Sound?, pitch: number?)
 		voice.TimePosition = 0
 		voice:Play()
 	end
-	talkScale.Scale = Config.Typing.TalkScale
-	TweenService:Create(talkScale, TweenInfo.new(TALK_DURATION, Enum.EasingStyle.Quad), { Scale = 1 }):Play()
 end
 
--- Letra por letra con MaxVisibleGraphemes: el texto completo ya está puesto, así el banner
--- (AutomaticSize) toma su alto final antes de aparecer y no salta mientras escribe.
-local function typeText(label: TextLabel, text: string, voice: Sound?)
-	local typing = Config.Typing
-	local chars = {}
-	local letters = 0
-	for first, last in utf8.graphemes(text) do
-		local char = text:sub(first, last)
-		table.insert(chars, char)
-		if not char:match("^[%s%p]+$") then
-			letters += 1
-		end
+-- Escribe el mensaje con la animación de los diálogos y vuelve cuando terminó de entrar.
+local function typeMessage(text: string, voice: Sound?)
+	-- El área toma el alto del texto: el banner (AutomaticSize) crece con él.
+	local height = messageText:Set(text)
+	if height then
+		messageArea.Size = UDim2.new(messageArea.Size.X, UDim.new(0, height))
 	end
-	-- Pocas letras = más lento, como un personaje que duda.
-	local slowdown = math.clamp(typing.ShortLetters / math.max(letters, 1), 1, typing.MaxSlowdown)
-	local spoken = 0
-	for index, char in chars do
-		label.MaxVisibleGraphemes = index
-		local isEllipsis = char == "…"
-			or char == "." and (chars[index - 1] == "." or chars[index + 1] == ".")
-		if isEllipsis then
-			speak(voice, typing.DotPitch)
-			task.wait(typing.DotDelay)
-			continue
-		end
-		local isPunctuation = char:match("^[%.,!%?;:]$") ~= nil
-		if not char:match("^[%s%p]+$") then
-			if spoken % Config.Voice.SoundEvery == 0 then
-				speak(voice)
-			end
-			spoken += 1
-		end
-		task.wait(typing.LetterDelay * slowdown * (if isPunctuation then typing.PunctuationPause else 1))
+	messageText.OnSpeak = function(pitch: number)
+		speak(voice, pitch)
 	end
-	label.MaxVisibleGraphemes = -1
+	while messageText.time < messageText.duration + Config.Typing.Entrance do
+		messageText:Update(RunService.RenderStepped:Wait())
+	end
+	messageText.OnSpeak = nil
 end
 
 local function showNextAnnouncement()
@@ -120,8 +99,7 @@ local function showNextAnnouncement()
 	showingAnnouncement = true
 	local data = table.remove(queue, 1)
 	announcement.UserLabel.Text = "@" .. data.Name
-	announcement.MessageLabel.Text = data.Text
-	announcement.MessageLabel.MaxVisibleGraphemes = 0
+	messageText:Clear()
 	announcement.Avatar.Image = ""
 	task.spawn(function()
 		local ok, content = pcall(
@@ -139,7 +117,9 @@ local function showNextAnnouncement()
 	UIEffects.popIn(announcement, POP_FROM)
 	restack()
 	task.spawn(function()
-		typeText(announcement.MessageLabel, data.Text, voiceFor(data.UserId))
+		-- Un frame para que el área tenga su ancho real antes de cortar las líneas.
+		RunService.RenderStepped:Wait()
+		typeMessage(data.Text, voiceFor(data.UserId))
 		task.wait(Config.AnnouncementDuration)
 		UIEffects.popOut(announcement, function()
 			showingAnnouncement = false
@@ -258,10 +238,14 @@ function Controller.Init()
 	announcement = gui:WaitForChild("Announcement")
 	pollFrame = gui:WaitForChild("Poll")
 	announcement.Visible = false
-	-- UIScale propio del avatar: el del anuncio ya lo usa el pop de entrada.
-	talkScale = Instance.new("UIScale")
-	talkScale.Name = "TalkScale"
-	talkScale.Parent = announcement.Avatar
+	messageArea = announcement:WaitForChild("MessageArea")
+	local glyph = UITemplates.get(GLYPH_TEMPLATE)
+	if not glyph then
+		return
+	end
+	-- Misma animación, ritmo y voz que los diálogos de NPC, centrada.
+	messageText =
+		AnimatedDialogueText.new(messageArea, glyph :: TextLabel, Config.Typing, Config.Voice.SoundEvery, "Center")
 	task.spawn(function()
 		local sound = voiceFor(0)
 		if sound then

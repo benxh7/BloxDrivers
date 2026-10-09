@@ -46,7 +46,7 @@ ServerScriptService          (src/Server)
     ├── Codes/CodesService (+ CodesConfig, privado del servidor)
     ├── Loading/AssetManifestService, LoadingService
     ├── MapVote/MapVoteService
-    ├── Npc/NPCAnimationService, NPCBillboardService
+    ├── Npc/NPCAnimationService, NPCBillboardService, DialogueService
     ├── Shop/ShopService
     └── Spectator/SpectatorService (+ ReportConfig, ReportPolicy)
 
@@ -64,6 +64,7 @@ StarterPlayerScripts         (src/Client)
 │   ├── VotingMapController
 │   ├── TopbarController
 │   ├── NPCLookController, NPCZoneController
+│   ├── DialogueController   diálogos de NPC (prompt "Talk" + retrato 3D)
 │   ├── SimulatorCircleController   lasers de los aros del lobby
 │   └── _TemplateController  plantilla para copiar (ignorada por ClientMain)
 ├── Components
@@ -74,6 +75,7 @@ StarterPlayerScripts         (src/Client)
     ├── Signal               señales entre módulos
     ├── Notifications        toasts (plantilla UITemplates.ToastMessage)
     ├── MobileScaler         reacomodo del HUD en táctil
+    ├── AnimatedDialogueText texto letra por letra (diálogos de NPC y anuncios)
     ├── ShopPurchaseEffect   animación previa al prompt de compra
     ├── WindowLayout         tamaño de ventana y de su Header según la pantalla
     └── VoterAvatars         fotitos de votantes (compartido por las vistas de votación)

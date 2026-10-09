@@ -143,8 +143,10 @@ Config.Typing = {
 	-- Puntos suspensivos ("..." o "…"): cada punto suena, con esta pausa (s) y este tono.
 	DotDelay = 0.3,
 	DotPitch = 0.85,
-	-- Cuánto crece el avatar en cada sonido ("habla"); 1 = sin movimiento.
-	TalkScale = 1.07,
+	-- Entrada de cada letra (la misma de los diálogos de NPC): sube desde Rise px más abajo
+	-- hasta su lugar en Entrance segundos.
+	Entrance = 0.24,
+	Rise = 10,
 }
 
 Config.Open = ShopConfig.Style.Open
