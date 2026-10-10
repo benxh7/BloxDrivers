@@ -11,6 +11,7 @@ local DebugConfig = require(RS:WaitForChild("DebugConfig"))
 local Ranks = require(script.Parent.AdminRanks)
 local Broadcast = require(script.Parent.AdminBroadcast)
 local LogService = require(script.Parent.Parent:WaitForChild("Logs"):WaitForChild("LogService"))
+local StaffAudit = require(script.Parent.StaffAudit)
 
 local Service = {}
 
@@ -29,6 +30,7 @@ local STAFF_ACTIONS = {
 	Bring = true,
 	Grant = true,
 	Revoke = true,
+	RevertSanctions = true,
 }
 -- Distancia (studs) a la que queda el que se teletransporta respecto del otro.
 local TELEPORT_OFFSET = CFrame.new(0, 0, 4)
@@ -41,6 +43,8 @@ type Result = {
 	Data: any?,
 	TargetLog: { UserId: number, Text: string }?,
 	StaffLog: string?,
+	-- Ban/kick/warn hecho: queda en la auditoría del staff para poder revertirlo.
+	Sanction: StaffAudit.Sanction?,
 }
 type Target = { UserId: number, Name: string, Player: Player? }
 
@@ -274,6 +278,15 @@ local function sanction(kind: string)
 		local verb = if kind == "Kick" then "Kicked" else "Warned"
 		result.TargetLog = { UserId = target.UserId, Text = ("%s by @%s · %s"):format(verb, admin.Name, reason) }
 		result.StaffLog = ("%s @%s · %s"):format(verb, target.Name, reason)
+		result.Sanction = {
+			Kind = kind,
+			TargetId = target.UserId,
+			TargetName = target.Name,
+			Reason = reason,
+			Duration = 0,
+			At = os.time(),
+			Reverted = false,
+		}
 		return result
 	end
 end
@@ -315,6 +328,15 @@ function Actions.Ban(admin, payload)
 		Text = ("Banned %s by @%s · %s"):format(describe(duration), admin.Name, reason),
 	}
 	result.StaffLog = ("Banned @%s %s · %s"):format(target.Name, describe(duration), reason)
+	result.Sanction = {
+		Kind = "Ban",
+		TargetId = target.UserId,
+		TargetName = target.Name,
+		Reason = reason,
+		Duration = duration,
+		At = os.time(),
+		Reverted = false,
+	}
 	return result
 end
 
@@ -464,11 +486,11 @@ function Actions.ViewLogs(_admin, payload)
 	if not userId or userId % 1 ~= 0 or userId == 0 then
 		return reply(false, "Player not found")
 	end
-	local logs = LogService.Get(userId)
+	local logs, counts = LogService.Get(userId)
 	if not logs then
 		return reply(false, "Could not load logs, try again")
 	end
-	return reply(true, "", logs)
+	return reply(true, "", { Entries = logs, Counts = counts or {} })
 end
 
 function Actions.ListAdmins()
@@ -501,11 +523,31 @@ function Actions.Inspect(_admin, payload)
 	if not userId or not Ranks.Get(userId) then
 		return reply(false, "That player has no rank")
 	end
-	return reply(true, "", profile(userId, Ranks.Entry(userId)))
+	local data = profile(userId, Ranks.Entry(userId))
+	data.Audit = StaffAudit.Summary(userId)
+	return reply(true, "", data)
+end
+
+function Actions.RevertSanctions(admin, payload)
+	local userId = tonumber(payload.UserId)
+	if not userId or userId % 1 ~= 0 or userId == admin.UserId or Ranks.IsOwner(userId) then
+		return reply(false, "You can't revert that player's sanctions")
+	end
+	local name = (Ranks.Entry(userId) and Ranks.Entry(userId).Name) or nameOf(userId)
+	local reverted, failed = StaffAudit.RevertBans(userId, name, admin)
+	local result = reply(
+		failed == 0,
+		if failed == 0
+			then ("Reverted %d active bans by %s"):format(reverted, name)
+			else ("Reverted %d bans by %s, %d failed"):format(reverted, name, failed)
+	)
+	result.StaffLog = ("Reverted all bans by @%s (%d)"):format(name, reverted)
+	return result
 end
 
 function Service.Init()
 	Ranks.Init()
+	StaffAudit.Init()
 	Broadcast.Init()
 	Ranks.OnChanged(function()
 		for _, player in Players:GetPlayers() do
@@ -539,14 +581,16 @@ function Service.Init()
 		DebugConfig.print(("[AdminService] %s -> %s: %s"):format(admin.Name, action, result.Message))
 		if result.Ok then
 			if result.TargetLog then
-				LogService.Add(result.TargetLog.UserId, "Moderation", result.TargetLog.Text)
+				LogService.Add(result.TargetLog.UserId, "Moderation", result.TargetLog.Text, nil, action)
 			end
 			if STAFF_ACTIONS[action] then
-				LogService.Add(admin.UserId, "Staff", result.StaffLog or result.Message)
+				LogService.Add(admin.UserId, "Staff", result.StaffLog or result.Message, nil, action)
+				StaffAudit.Record(admin, action, result.Sanction)
 			end
 		end
 		result.TargetLog = nil
 		result.StaffLog = nil
+		result.Sanction = nil
 		return result
 	end, 0.3)
 end

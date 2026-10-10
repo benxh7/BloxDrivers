@@ -1,5 +1,6 @@
 -- Ubicación en Studio: ServerScriptService > Services > Data > DataService (ModuleScript)
 -- Dueño de EasyProfileStore: crea el store de jugadores y avisa cuándo carga cada perfil.
+local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 local RS = game:GetService("ReplicatedStorage")
 local EasyProfileStore = require(ServerStorage:WaitForChild("EasyProfileStore"))
@@ -18,6 +19,10 @@ DataService.Template = {
 	Reports = { Total = 0, Unique = 0, Reporters = {}, AlertedAt = 0 },
 	-- Logs del Admin Panel: { [categoría] = { { At, Text }, ... } }, el más nuevo primero.
 	Logs = { Purchase = {}, Moderation = {}, Report = {}, Code = {}, Session = {}, Staff = {} },
+	-- Totales de por vida de los logs (Logs guarda solo los últimos): { ["Moderation"] = n, ["Moderation:Ban"] = n }.
+	LogCounts = {},
+	-- Auditoría si es staff: Counts = { [acción] = n } y Sanctions = { ban/kick/warn, ... }.
+	Staff = { Counts = {}, Sanctions = {} },
 }
 
 -- EasyProfileStore usa UN solo store: lo crea este módulo al requerirse (antes de cualquier
@@ -40,6 +45,22 @@ end
 
 function DataService.GetProfile(player: Player): any?
 	return EasyProfileStore.Profiles[player]
+end
+
+-- Datos de cualquier jugador, solo lectura: el perfil vivo si está en este servidor, si no la
+-- última versión guardada (los mensajes pendientes recién se aplican cuando vuelve a entrar).
+function DataService.ReadData(userId: number): any?
+	local player = Players:GetPlayerByUserId(userId)
+	local profile = player and EasyProfileStore.Profiles[player]
+	if profile then
+		return profile.Data
+	end
+	local store = EasyProfileStore.DatasLoaded
+	if not store then
+		return nil
+	end
+	local ok, saved = pcall(store.GetAsync, store, "Player_" .. userId)
+	return if ok and saved then saved.Data else nil
 end
 
 -- Mensajes del canal de EasyProfileStore (PublishMessage), filtrados por `Type`.

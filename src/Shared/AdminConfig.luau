@@ -39,6 +39,13 @@ Config.Permissions = {
 	Inspect = 1,
 	Lookup = 1,
 	ViewLogs = 1,
+	-- Solo el Owner: levanta todos los bans activos que puso un staff.
+	RevertSanctions = 3,
+}
+
+-- Auditoría del staff (StaffAudit): bans, kicks y warns guardados por staff para poder revertirlos.
+Config.Audit = {
+	MaxSanctions = 200,
 }
 
 -- Logs por jugador (en su perfil). Cada categoría guarda las últimas MaxPerCategory entradas.

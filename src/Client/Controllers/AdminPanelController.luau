@@ -12,6 +12,8 @@ local GradientButton = require(Utils:WaitForChild("GradientButton"))
 local Remotes = require(RS:WaitForChild("Remotes"))
 local Config = require(RS:WaitForChild("AdminConfig"))
 
+local ChatNameColor = require(Utils:WaitForChild("ChatNameColor"))
+
 local Controller = {}
 
 local WINDOW_NAME = "AdminPanel"
@@ -27,13 +29,17 @@ local globalScope: { [Instance]: boolean } = {}
 local grantIndex = 1
 local busy: { [string]: boolean } = {}
 local profileUserId: number? = nil
+local profileName: string? = nil
 local searched = nil
 -- Logs del jugador buscado (todas las categorías) y la pestaña elegida.
 local playerLogs = nil
+local logCounts = {}
 local logsStatus = "Search a player to see their logs"
 local logCategory = "All"
 local logPeriod = 1
 local setBlur
+local shellTransparency
+local inspectVersion = 0
 
 local function myLevel(): number
 	local rank = Config.Ranks[player:GetAttribute("AdminRank") or ""]
@@ -107,6 +113,7 @@ end
 
 local function setThumbnail(image: ImageLabel, userId: number, size: Enum.ThumbnailSize?)
 	image.Image = ""
+	image:SetAttribute("ThumbnailUserId", userId)
 	task.spawn(function()
 		local ok, content = pcall(
 			Players.GetUserThumbnailAsync,
@@ -115,7 +122,7 @@ local function setThumbnail(image: ImageLabel, userId: number, size: Enum.Thumbn
 			Enum.ThumbnailType.HeadShot,
 			size or Enum.ThumbnailSize.Size150x150
 		)
-		if ok and image.Parent then
+		if ok and image.Parent and image:GetAttribute("ThumbnailUserId") == userId then
 			image.Image = content
 		end
 	end)
@@ -136,7 +143,15 @@ local function fitWindow()
 	if screen.X <= 0 or screen.Y <= 0 then
 		return
 	end
-	local width, height = WindowLayout.fitMain(screen, main)
+	if adminsPage.Profile.Visible and adminsPage.Visible then
+        local width = math.min(800, screen.X * .88, screen.Y * .86 * 1.30)
+        main.Size = UDim2.fromOffset(width, width / 1.30)
+        main.Position = UDim2.fromScale(.5, .52)
+        pages.Position = UDim2.fromScale(0,0)
+        pages.Size = UDim2.fromScale(1,1)
+        return
+    end
+    local width, height = WindowLayout.fitMain(screen, main)
 	local tabWidth = tabs.AbsoluteSize.X
 	local reserved = (tabWidth + 16) * 2 + 16
 	if screen.X - width < reserved then
@@ -193,12 +208,16 @@ local function revoke(userId: number)
 end
 
 local function showProfile(userId: number)
+	inspectVersion += 1
+	local version = inspectVersion
 	local result = request("Inspect", { UserId = userId }, true)
+	if version ~= inspectVersion then return end
 	if not result or not result.Ok then
 		return
 	end
 	local data = result.Data
 	profileUserId = userId
+	profileName = data.Name
 	local profile = adminsPage.Profile
 	local card = profile.AvatarCard
 	local label, color = rankText(data.Rank)
@@ -206,7 +225,15 @@ local function showProfile(userId: number)
 	card.UserLabel.Text = "@" .. data.Name
 	card.RankLabel.Text = label
 	card.RankLabel.TextColor3 = color
-	card.NameBar.UIGradient.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.45), color)
+	-- Username, not display name or rank: the classic Roblox chat name color.
+    local tint = ChatNameColor.FromUsername(data.Name)
+    card.AvatarBox.BackgroundColor3 = Color3.new(1, 1, 1)
+    card.AvatarBox.UIGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, tint:Lerp(Color3.new(1, 1, 1), .38)),
+        ColorSequenceKeypoint.new(.48, tint),
+        ColorSequenceKeypoint.new(1, tint:Lerp(Color3.new(0, 0, 0), .20)),
+    })
+    card.Description.Text = "No profile\ndescription\nyet."
 	setThumbnail(card.AvatarBox.Avatar, userId, Enum.ThumbnailSize.Size420x420)
 	local lines = {
 		('<font color="#%s">Rank : %s</font>'):format(color:ToHex(), label),
@@ -224,7 +251,26 @@ local function showProfile(userId: number)
 	if data.AccountAge then
 		table.insert(lines, ('<font color="#FFAA28">Account age : %dd</font>'):format(data.AccountAge))
 	end
+	-- Auditoría del staff: total de acciones y sanciones (los bans activos se pueden revertir).
+	local audit = data.Audit
+	if audit then
+		local counts = audit.Counts
+		table.insert(lines, ('<font color="#FFFFFF">Staff actions : %d</font>'):format(audit.Total))
+		table.insert(lines, ('<font color="#FF5A64">Bans : %d (%d active)</font>'):format(audit.Bans, audit.ActiveBans))
+		table.insert(
+			lines,
+			('<font color="#FFAA28">Kicks : %d · Warns : %d</font>'):format(counts.Kick or 0, counts.Warn or 0)
+		)
+	end
 	profile.InfoCard.Stats.Text = table.concat(lines, "\n")
+	local staffActions = profile.InfoCard.StaffActions
+	staffActions.Visible = audit ~= nil
+	-- UNDO BANS: solo el Owner, nunca sobre sí mismo ni otro Owner, y solo si hay algo que levantar.
+	staffActions.UndoSlot.Visible = audit ~= nil
+		and myLevel() >= Config.Permissions.RevertSanctions
+		and not data.Fixed
+		and userId ~= player.UserId
+		and audit.ActiveBans > 0
 	-- Actions centra los botones: sin REVOKE, BACK queda solo en el medio.
 	profile.InfoCard.Actions.RevokeSlot.Visible = canRevoke(data)
 	adminsPage.List.Visible = false
@@ -273,17 +319,70 @@ local STATUS = {
 	Offline = { "Offline", Color3.fromRGB(180, 188, 210) },
 }
 
+local function periodStart(): number
+	local period = Config.Logs.Periods[logPeriod]
+	if period.Days == 0 then
+		local now = os.date("*t")
+		return os.time({ year = now.year, month = now.month, day = now.day, hour = 0 })
+	end
+	return if period.Days then os.time() - period.Days * 86400 else 0
+end
+
+-- Logs de antes de que existiera `Kind`: se deduce por el verbo con que empieza el texto.
+local KIND_PREFIXES = { Ban = "Banned", Kick = "Kicked", Warn = "Warned", Unban = "Unbanned" }
+
+local function kindOf(entry): string?
+	if entry.Kind then
+		return entry.Kind
+	end
+	for kind, prefix in KIND_PREFIXES do
+		if entry.Text:sub(1, #prefix + 1) == prefix .. " " then
+			return kind
+		end
+	end
+	return nil
+end
+
+-- Cantidad de logs de una categoría (y de un tipo, si se pasa) en el período elegido.
+-- En "ALL TIME" usa el total de por vida: el perfil guarda solo las últimas entradas.
+local function countLogs(category: string, kind: string?): number
+	local since = periodStart()
+	local amount = 0
+	for _, entry in playerLogs and playerLogs[category] or {} do
+		if entry.At >= since and (not kind or kindOf(entry) == kind) then
+			amount += 1
+		end
+	end
+	if since == 0 then
+		local key = if kind then category .. ":" .. kind else category
+		amount = math.max(amount, logCounts[key] or 0)
+	end
+	return amount
+end
+
+local SANCTION_KINDS = { { "Ban", "Bans" }, { "Kick", "Kicks" }, { "Warn", "Warns" }, { "Unban", "Unbans" } }
+
+-- Moderation: sanciones que recibió. Staff: las que puso. All: las recibidas.
+local function breakdownText(): string
+	if not playerLogs then
+		return ""
+	end
+	local category = if logCategory == "Staff" then "Staff" elseif logCategory == "All" then "Moderation" else logCategory
+	if category ~= "Moderation" and category ~= "Staff" then
+		return ("Total: %d"):format(countLogs(category))
+	end
+	local parts = {}
+	for _, kind in SANCTION_KINDS do
+		table.insert(parts, ("%s: %d"):format(kind[2], countLogs(category, kind[1])))
+	end
+	local prefix = if category == "Staff" then "Issued: " else "Received: "
+	return prefix .. table.concat(parts, " · ")
+end
+
 -- Entradas de la pestaña elegida ("All" = todas las categorías), dentro del período y
 -- ordenadas de la más nueva a la más vieja. Cada una lleva el ícono de su categoría.
 local function visibleLogs(): { { At: number, Text: string, Icon: string } }
-	local period = Config.Logs.Periods[logPeriod]
-	local since = 0
-	if period.Days == 0 then
-		local now = os.date("*t")
-		since = os.time({ year = now.year, month = now.month, day = now.day, hour = 0 })
-	elseif period.Days then
-		since = os.time() - period.Days * 86400
-	end
+	local since = periodStart()
 	local list = {}
 	for _, category in Config.Logs.Categories do
 		if logCategory == "All" or logCategory == category.Id then
@@ -302,11 +401,20 @@ end
 
 local function renderLogs()
 	local card = playerPage.LogsCard
+	local total = 0
 	for _, category in Config.Logs.Categories do
-		paint(card[category.Button], if category.Id == logCategory then category.Palette else "Grey")
+		local button = card[category.Button]
+		local amount = countLogs(category.Id)
+		total += amount
+		paint(button, if category.Id == logCategory then category.Palette else "Grey")
+		button.Count.Label.Text = tostring(amount)
+		button.Count.Visible = playerLogs ~= nil
 	end
 	local all = Config.Logs.All
 	paint(card[all.Button], if logCategory == "All" then all.Palette else "Grey")
+	card[all.Button].Count.Label.Text = tostring(total)
+	card[all.Button].Count.Visible = playerLogs ~= nil
+	card.BreakdownLabel.Text = breakdownText()
 	card.PeriodButton.Label.Text = Config.Logs.Periods[logPeriod].Label
 	clearList(card.List)
 	local entries = visibleLogs()
@@ -345,6 +453,7 @@ end
 local function loadLogs(data)
 	local card = playerPage.LogsCard
 	playerLogs = nil
+	logCounts = {}
 	if not data then
 		card.TargetLabel.Text = "Search a player to see their logs"
 		logsStatus = "Search a player to see their logs"
@@ -359,7 +468,8 @@ local function loadLogs(data)
 	if searched ~= data then
 		return
 	end
-	playerLogs = if result and result.Ok then result.Data else nil
+	playerLogs = if result and result.Ok then result.Data.Entries else nil
+	logCounts = if result and result.Ok then result.Data.Counts else {}
 	logsStatus = "Could not load logs"
 	renderLogs()
 end
@@ -575,7 +685,24 @@ local function bindPlayerPage()
 end
 
 local function bindAdminsPage()
-	local profile = adminsPage.Profile
+    local profile = adminsPage.Profile
+    local function updateProfileChrome()
+        local focused = profile.Visible and adminsPage.Visible
+        main.BackgroundTransparency = if focused then 1 else shellTransparency
+        main.Outline.Enabled = not focused
+        main.InnerBorder.Visible = not focused
+        main.Header.Visible = not focused
+        tabs.Visible = not focused
+        if setBlur then setBlur(not focused and UIManager.IsOpen(WINDOW_NAME)) end
+        fitWindow()
+    end
+    profile:GetPropertyChangedSignal("Visible"):Connect(updateProfileChrome)
+    adminsPage:GetPropertyChangedSignal("Visible"):Connect(updateProfileChrome)
+    bind(profile.ProfileClose, function()
+        profile.Visible = false
+        adminsPage.List.Visible = true
+        refreshAdmins()
+    end)
 	bind(profile.InfoCard.Actions.BackSlot.BackButton, function()
 		profile.Visible = false
 		adminsPage.List.Visible = true
@@ -584,6 +711,26 @@ local function bindAdminsPage()
 	bindConfirm(profile.InfoCard.Actions.RevokeSlot.RevokeButton, function()
 		if profileUserId then
 			revoke(profileUserId)
+		end
+	end)
+	-- LOGS: abre el Player Panel con ese staff buscado y la pestaña Staff de sus logs.
+	bind(profile.InfoCard.StaffActions.LogsSlot.LogsButton, function()
+		if not profileName then
+			return
+		end
+		logCategory = "Staff"
+		selectTab("Player")
+		playerPage.CommandsCard.SearchInput.Text = profileName
+		search()
+	end)
+	bindConfirm(profile.InfoCard.StaffActions.UndoSlot.UndoButton, function()
+		local userId = profileUserId
+		if not userId then
+			return
+		end
+		local result = request("RevertSanctions", { UserId = userId })
+		if result and result.Ok then
+			showProfile(userId)
 		end
 	end)
 end
@@ -610,6 +757,7 @@ function Controller.Init()
 		return
 	end
 	main = gui:WaitForChild("Main")
+	shellTransparency = main.BackgroundTransparency
 	pages = main:WaitForChild("Pages")
 	tabs = main:WaitForChild("Tabs")
 	serverPage = pages:WaitForChild("ServerPage")

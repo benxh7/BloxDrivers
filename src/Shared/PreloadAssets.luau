@@ -27,6 +27,10 @@ function Assets.normalize(id)
 	if type(id) ~= "string" or id == "" then
 		return nil
 	end
+	-- Thumbnail IDs identify users/games, not image assets. Preserve the entire URI.
+	if id:match("^rbxthumb://") then
+		return id
+	end
 	local digits = id:match("^rbxassetid://(%d+)$") or id:match("[?&]id=(%d+)")
 	if digits then
 		return tonumber(digits) > 0 and "rbxassetid://" .. digits or nil
