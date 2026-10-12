@@ -19,6 +19,7 @@ local MenuCameraConfig = require(ReplicatedStorage:WaitForChild("MenuCameraConfi
 local MenuCamera = require(script.Parent:WaitForChild("MenuCamera"))
 local PreloadRunner = require(script.Parent:WaitForChild("PreloadRunner"))
 local Responsive = require(script.Parent:WaitForChild("Responsive"))
+local UpdateLog = require(script.Parent:WaitForChild("UpdateLog"))
 local WaveTransition = require(script.Parent:WaitForChild("WaveTransition"))
 local Remotes = require(ReplicatedStorage:WaitForChild("Remotes"))
 local setLoadingComplete = Remotes.event("SetLoadingComplete")
@@ -44,6 +45,7 @@ local actionButton = center:WaitForChild("SkipButton") :: TextButton
 local tipLabel = center:WaitForChild("TipFrame"):WaitForChild("TipLabel") :: TextLabel
 
 local fitResponsive = Responsive.attach(gui)
+UpdateLog.attach(gui)
 
 -- Reemplazar con tips propios de BloxDrivers.
 local TIPS = {

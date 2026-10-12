@@ -23,6 +23,8 @@ DataService.Template = {
 	LogCounts = {},
 	-- Auditoría si es staff: Counts = { [acción] = n } y Sanctions = { ban/kick/warn, ... }.
 	Staff = { Counts = {}, Sanctions = {} },
+	-- Cajas: Owned = { [caseId] = n } sin abrir; Rewards = { ["caseId:rewardId"] = n } ganados.
+	Crates = { Owned = {}, Rewards = {} },
 }
 
 -- EasyProfileStore usa UN solo store: lo crea este módulo al requerirse (antes de cualquier

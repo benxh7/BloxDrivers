@@ -30,7 +30,7 @@ Ejemplo: `InventoryGui` ↔ `InventoryController` ↔ `InventoryService` ↔ `In
 
 ```
 ReplicatedFirst
-└── LoadingScreen            pantalla de carga (corre antes que todo)
+└── LoadingScreen            pantalla de carga (corre antes que todo; UpdateLog = panel de novedades)
 
 ReplicatedStorage            (src/Shared)
 ├── Remotes                  ModuleScript + RemoteEvents/Functions como hijos (los crea el server)
@@ -41,9 +41,10 @@ ReplicatedStorage            (src/Shared)
 ServerScriptService          (src/Server)
 ├── Main                     Script: crea Remotes y arranca todos los *Service
 └── Services
-    ├── Admin/AdminService (+ AdminRanks, AdminBroadcast)
+    ├── Admin/AdminService (+ AdminRanks, AdminBroadcast, StaffAudit)
     ├── Data/DataService     dueño de EasyProfileStore (perfil de cada jugador)
     ├── Codes/CodesService (+ CodesConfig, privado del servidor)
+    ├── Crate/CrateService   cajas: compra, tirada y sorteo (profile.Data.Crates)
     ├── Loading/AssetManifestService, LoadingService
     ├── MapVote/MapVoteService
     ├── Npc/NPCAnimationService, NPCBillboardService, DialogueService
@@ -65,6 +66,7 @@ StarterPlayerScripts         (src/Client)
 │   ├── TopbarController
 │   ├── NPCLookController, NPCZoneController
 │   ├── DialogueController   diálogos de NPC (prompt "Talk" + retrato 3D)
+│   ├── CrateController      ventana de cajas (ruleta, probabilidades, LUCKY SPIN)
 │   ├── SimulatorCircleController   lasers de los aros del lobby
 │   └── _TemplateController  plantilla para copiar (ignorada por ClientMain)
 ├── Components
@@ -85,6 +87,7 @@ StarterGui                   (src/StarterGui: solo init.meta.json por GUI)
 ├── Shop/Settings/Codes/DailyRewards/PlaytimeRewardsGui   ventanas, DisplayOrder 10
 ├── VotingMapGui             popup del servidor, DisplayOrder 20
 ├── SpectatorGui             controles del espectador, DisplayOrder 25
+├── CrateGui                 ventana de cajas, DisplayOrder 35
 └── ShopPurchaseGui          efecto de compra, DisplayOrder 150
 ```
 

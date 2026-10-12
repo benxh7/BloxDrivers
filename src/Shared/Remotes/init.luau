@@ -41,6 +41,9 @@ local FUNCTIONS: { string } = {
 	-- Admin Panel.
 	"AdminRequest",
 	"GetActivePoll",
+
+	-- Cajas: (acción, caseId, opción, requestId).
+	"CrateRequest",
 }
 
 local UPDATE_UI = "UpdateUI"
